@@ -100,7 +100,7 @@ void prefixSum(__local short* sum, __local ushort2* temp) {
  */
 void storeInteractionData(int x, __local unsigned short* buffer, __local short* sum, __local ushort2* temp, __local int* atoms, __local int* numAtoms,
             __local int* baseIndex, __global unsigned int* interactionCount, __global int* interactingTiles, __global unsigned int* interactingAtoms, real4 periodicBoxSize,
-            real4 invPeriodicBoxSize, __global const real4* posq, __local real4* posBuffer, real4 blockCenterX, real4 blockSizeX, unsigned int maxTiles, bool finish) {
+            real4 invPeriodicBoxSize, __global const real4* posq, __local real4* posBuffer, real4 blockCenterX, real4 blockSizeX, unsigned int maxTiles, int finish) {
     const bool singlePeriodicCopy = (0.5f*periodicBoxSize.x-blockSizeX.x >= PADDED_CUTOFF &&
                                      0.5f*periodicBoxSize.y-blockSizeX.y >= PADDED_CUTOFF &&
                                      0.5f*periodicBoxSize.z-blockSizeX.z >= PADDED_CUTOFF);
