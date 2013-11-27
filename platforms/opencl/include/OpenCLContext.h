@@ -463,6 +463,12 @@ public:
         return useMixedPrecision;
     }
     /**
+     * Get whether the device being used is an Intel Many Integrated Core accelerator.
+     */
+    bool getIsMIC() {
+        return isMIC;
+    }
+    /**
      * Convert a number to a string in a format suitable for including in a kernel.
      * This takes into account whether the context uses single or double precision.
      */
@@ -621,7 +627,7 @@ private:
     int numThreadBlocks;
     int numForceBuffers;
     int simdWidth;
-    bool supports64BitGlobalAtomics, supportsDoublePrecision, useDoublePrecision, useMixedPrecision, atomsWereReordered;
+    bool supports64BitGlobalAtomics, supportsDoublePrecision, useDoublePrecision, useMixedPrecision, atomsWereReordered, isMIC;
     mm_float4 periodicBoxSize, invPeriodicBoxSize;
     mm_double4 periodicBoxSizeDouble, invPeriodicBoxSizeDouble;
     std::string defaultOptimizationOptions;

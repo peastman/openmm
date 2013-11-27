@@ -537,9 +537,10 @@ cl::Kernel OpenCLNonbondedUtilities::createInteractionKernel(const string& sourc
     replacements["LOAD_ATOM1_PARAMETERS"] = load1.str();
     stringstream load2j;
     for (int i = 0; i < (int) params.size(); i++) {
-        if (params[i].getNumComponents() == 1) {
+        if (context.getIsMIC())
+            load2j<<params[i].getType()<<" "<<params[i].getName()<<"2 = global_"<<params[i].getName()<<"[atom2];\n";
+        else if (params[i].getNumComponents() == 1)
             load2j<<params[i].getType()<<" "<<params[i].getName()<<"2 = localData[atom2]."<<params[i].getName()<<";\n";
-        }
         else {
             load2j<<params[i].getType()<<" "<<params[i].getName()<<"2 = ("<<params[i].getType()<<") (";
             for (int j = 0; j < params[i].getNumComponents(); ++j) {
@@ -579,6 +580,8 @@ cl::Kernel OpenCLNonbondedUtilities::createInteractionKernel(const string& sourc
     string file;
     if (deviceIsCpu)
         file = OpenCLKernelSources::nonbonded_cpu;
+    else if (context.getIsMIC())
+        file = OpenCLKernelSources::nonbonded_mic;
     else
         file = OpenCLKernelSources::nonbonded;
     cl::Program program = context.createProgram(context.replaceStrings(file, replacements), defines);

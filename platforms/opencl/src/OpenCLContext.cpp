@@ -176,6 +176,7 @@ OpenCLContext::OpenCLContext(const System& system, int platformIndex, int device
         supportsDoublePrecision = (device.getInfo<CL_DEVICE_EXTENSIONS>().find("cl_khr_fp64") != string::npos);
         if ((useDoublePrecision || useMixedPrecision) && !supportsDoublePrecision)
             throw OpenMMException("This device does not support double precision");
+        isMIC = (device.getInfo<CL_DEVICE_NAME>() == "Intel(R) Many Integrated Core Acceleration Card");
         string vendor = device.getInfo<CL_DEVICE_VENDOR>();
         int numThreadBlocksPerComputeUnit = 6;
         if (vendor.size() >= 6 && vendor.substr(0, 6) == "NVIDIA") {
@@ -231,6 +232,10 @@ OpenCLContext::OpenCLContext(const System& system, int platformIndex, int device
                 if (!amdPostSdk2_4)
                     compilationDefines["AMD_ATOMIC_WORK_AROUND"] = "";
             }
+        }
+        else if (isMIC) {
+            simdWidth = 16;
+            numThreadBlocksPerComputeUnit = 1;
         }
         else
             simdWidth = 1;
