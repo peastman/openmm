@@ -464,11 +464,16 @@ CpuCalcPmeReciprocalForceKernel::~CpuCalcPmeReciprocalForceKernel() {
     isDeleted = true;
     pthread_mutex_lock(&lock);
     pthread_cond_broadcast(&startCondition);
+    pthread_mutex_unlock(&lock);
+    for (int i = 0; i < (int) thread.size(); i++) {
+        pthread_join(thread[i], NULL);
+    }
+
+    pthread_mutex_lock(&lock);
     pthread_cond_broadcast(&mainThreadStartCondition);
     pthread_mutex_unlock(&lock);
-    for (int i = 0; i < (int) thread.size(); i++)
-        pthread_join(thread[i], NULL);
     pthread_join(mainThread, NULL);
+       
     pthread_mutex_destroy(&lock);
     pthread_cond_destroy(&startCondition);
     pthread_cond_destroy(&endCondition);
