@@ -186,13 +186,19 @@ void CudaNonbondedUtilities::initialize(const System& system) {
     // Build a list of tiles that contain exclusions.
 
     set<pair<int, int> > tilesWithExclusions;
-    for (int atom1 = 0; atom1 < (int) atomExclusions.size(); ++atom1) {
-        int x = atom1/CudaContext::TileSize;
-        for (int j = 0; j < (int) atomExclusions[atom1].size(); ++j) {
-            int atom2 = atomExclusions[atom1][j];
-            int y = atom2/CudaContext::TileSize;
-            tilesWithExclusions.insert(make_pair(max(x, y), min(x, y)));
+    set<int> blocks;
+    for (int block = 0; block < numAtomBlocks; block++) {
+        int firstAtom = block*CudaContext::TileSize;
+        int lastAtom = min(firstAtom+CudaContext::TileSize, numAtoms);
+        blocks.clear();
+        for (int atom1 = firstAtom; atom1 < lastAtom; ++atom1) {
+            for (int j = 0; j < (int) atomExclusions[atom1].size(); ++j) {
+                int atom2 = atomExclusions[atom1][j];
+                blocks.insert(atom2/CudaContext::TileSize);
+            }
         }
+        for (set<int>::const_iterator iter = blocks.begin(); iter != blocks.end(); ++iter)
+            tilesWithExclusions.insert(make_pair(max(block, *iter), min(block, *iter)));
     }
     vector<ushort2> exclusionTilesVec;
     for (set<pair<int, int> >::const_iterator iter = tilesWithExclusions.begin(); iter != tilesWithExclusions.end(); ++iter)
@@ -206,10 +212,10 @@ void CudaNonbondedUtilities::initialize(const System& system) {
         exclusionTileMap[make_pair(tile.x, tile.y)] = i;
     }
     vector<vector<int> > exclusionBlocksForBlock(numAtomBlocks);
-    for (set<pair<int, int> >::const_iterator iter = tilesWithExclusions.begin(); iter != tilesWithExclusions.end(); ++iter) {
-        exclusionBlocksForBlock[iter->first].push_back(iter->second);
-        if (iter->first != iter->second)
-            exclusionBlocksForBlock[iter->second].push_back(iter->first);
+    for (vector<ushort2>::const_iterator iter = exclusionTilesVec.begin(); iter != exclusionTilesVec.end(); ++iter) {
+        exclusionBlocksForBlock[iter->x].push_back(iter->y);
+        if (iter->x != iter->y)
+            exclusionBlocksForBlock[iter->y].push_back(iter->x);
     }
     vector<unsigned int> exclusionRowIndicesVec(numAtomBlocks+1, 0);
     vector<unsigned int> exclusionIndicesVec;
@@ -227,7 +233,7 @@ void CudaNonbondedUtilities::initialize(const System& system) {
 
     // Record the exclusion data.
 
-    exclusions = CudaArray::create<tileflags>(context, tilesWithExclusions.size()*CudaContext::TileSize, "exclusions");
+    exclusions = CudaArray::create<tileflags>(context, exclusionTilesVec.size()*CudaContext::TileSize, "exclusions");
     tileflags allFlags = (tileflags) -1;
     vector<tileflags> exclusionVec(exclusions->getSize(), allFlags);
     for (int atom1 = 0; atom1 < (int) atomExclusions.size(); ++atom1) {
