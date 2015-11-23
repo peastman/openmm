@@ -217,6 +217,26 @@ public:
         return numTiles;
     }
     /**
+     * Get a reference to the variable holding the number of tiles with exclusions.
+     */
+    int& getNumTilesWithExclusions() {
+        return numTilesWithExclusions;
+    }
+    /**
+     * Get a reference to the variable holding the index of the first tile with exclusions
+     * this context is responsible for processing.
+     */
+    int& getFirstExclusionTile() {
+        return firstExclusionTile;
+    }
+    /**
+     * Get a reference to the variable holding the index of the last tile with exclusions
+     * this context is responsible for processing.
+     */
+    int& getLastExclusionTile() {
+        return lastExclusionTile;
+    }
+    /**
      * Set whether to add padding to the cutoff distance when building the neighbor list.
      * This increases the size of the neighbor list (and thus the cost of computing interactions),
      * but also means we don't need to rebuild it every time step.  The default value is true,
@@ -249,6 +269,10 @@ public:
      * @param groups    the set of force groups
      */
     void createKernelsForGroups(int groups);
+    /**
+     * Rebuild the data structures containing information about exceptions.
+     */
+    void rebuildExceptions();
 private:
     class KernelSet;
     class BlockSortTrait;
@@ -277,7 +301,7 @@ private:
     std::map<int, std::string> groupKernelSource;
     double lastCutoff;
     bool useCutoff, usePeriodic, anyExclusions, usePadding, forceRebuildNeighborList;
-    int startTileIndex, numTiles, startBlockIndex, numBlocks, maxTiles, maxExclusions, numForceThreadBlocks, forceThreadBlockSize, numAtoms, groupFlags;
+    int startTileIndex, numTiles, startBlockIndex, numBlocks, maxTiles, maxExclusions, numTilesWithExclusions, firstExclusionTile, lastExclusionTile, numForceThreadBlocks, forceThreadBlockSize, numAtoms, groupFlags;
 };
 
 /**

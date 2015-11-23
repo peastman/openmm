@@ -15,10 +15,11 @@ extern "C" __global__ void computeN2Value(const real4* __restrict__ posq, const 
 #ifdef USE_CUTOFF
         const int* __restrict__ tiles, const unsigned int* __restrict__ interactionCount, real4 periodicBoxSize, real4 invPeriodicBoxSize,
         real4 periodicBoxVecX, real4 periodicBoxVecY, real4 periodicBoxVecZ, unsigned int maxTiles, const real4* __restrict__ blockCenter,
-        const real4* __restrict__ blockSize, const unsigned int* __restrict__ interactingAtoms
+        const real4* __restrict__ blockSize, const unsigned int* __restrict__ interactingAtoms,
 #else
-        unsigned int numTiles
+        unsigned int numTiles,
 #endif
+        int numTilesWithExclusions, int firstExclusionTile, int lastExclusionTile
         PARAMETER_ARGUMENTS) {
     const unsigned int totalWarps = (blockDim.x*gridDim.x)/TILE_SIZE;
     const unsigned int warp = (blockIdx.x*blockDim.x+threadIdx.x)/TILE_SIZE;
@@ -28,9 +29,9 @@ extern "C" __global__ void computeN2Value(const real4* __restrict__ posq, const 
 
     // First loop: process tiles that contain exclusions.
     
-    const unsigned int firstExclusionTile = FIRST_EXCLUSION_TILE+warp*(LAST_EXCLUSION_TILE-FIRST_EXCLUSION_TILE)/totalWarps;
-    const unsigned int lastExclusionTile = FIRST_EXCLUSION_TILE+(warp+1)*(LAST_EXCLUSION_TILE-FIRST_EXCLUSION_TILE)/totalWarps;
-    for (int pos = firstExclusionTile; pos < lastExclusionTile; pos++) {
+    const unsigned int startExclusionTile = firstExclusionTile+warp*(lastExclusionTile-firstExclusionTile)/totalWarps;
+    const unsigned int endExclusionTile = firstExclusionTile+(warp+1)*(lastExclusionTile-firstExclusionTile)/totalWarps;
+    for (int pos = startExclusionTile; pos < endExclusionTile; pos++) {
         const ushort2 tileIndices = exclusionTiles[pos];
         const unsigned int x = tileIndices.x;
         const unsigned int y = tileIndices.y;
@@ -187,7 +188,7 @@ extern "C" __global__ void computeN2Value(const real4* __restrict__ posq, const 
             // Skip over tiles that have exclusions, since they were already processed.
 
             while (skipTiles[tbx+TILE_SIZE-1] < pos) {
-                if (skipBase+tgx < NUM_TILES_WITH_EXCLUSIONS) {
+                if (skipBase+tgx < numTilesWithExclusions) {
                     ushort2 tile = exclusionTiles[skipBase+tgx];
                     skipTiles[threadIdx.x] = tile.x + tile.y*NUM_BLOCKS - tile.y*(tile.y+1)/2;
                 }

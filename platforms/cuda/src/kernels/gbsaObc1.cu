@@ -74,7 +74,7 @@ extern "C" __global__ void computeBornSum(unsigned long long* __restrict__ globa
 #else
         unsigned int numTiles,
 #endif
-        const ushort2* __restrict__ exclusionTiles) {
+        const ushort2* __restrict__ exclusionTiles, int numTilesWithExclusions, int firstExclusionTile, int lastExclusionTile) {
     const unsigned int totalWarps = (blockDim.x*gridDim.x)/TILE_SIZE;
     const unsigned int warp = (blockIdx.x*blockDim.x+threadIdx.x)/TILE_SIZE;
     const unsigned int tgx = threadIdx.x & (TILE_SIZE-1);
@@ -83,9 +83,9 @@ extern "C" __global__ void computeBornSum(unsigned long long* __restrict__ globa
 
     // First loop: process tiles that contain exclusions.
     
-    const unsigned int firstExclusionTile = FIRST_EXCLUSION_TILE+warp*(LAST_EXCLUSION_TILE-FIRST_EXCLUSION_TILE)/totalWarps;
-    const unsigned int lastExclusionTile = FIRST_EXCLUSION_TILE+(warp+1)*(LAST_EXCLUSION_TILE-FIRST_EXCLUSION_TILE)/totalWarps;
-    for (int pos = firstExclusionTile; pos < lastExclusionTile; pos++) {
+    const unsigned int startExclusionTile = firstExclusionTile+warp*(lastExclusionTile-firstExclusionTile)/totalWarps;
+    const unsigned int endExclusionTile = firstExclusionTile+(warp+1)*(lastExclusionTile-firstExclusionTile)/totalWarps;
+    for (int pos = startExclusionTile; pos < endExclusionTile; pos++) {
         const ushort2 tileIndices = exclusionTiles[pos];
         const unsigned int x = tileIndices.x;
         const unsigned int y = tileIndices.y;
@@ -245,7 +245,7 @@ extern "C" __global__ void computeBornSum(unsigned long long* __restrict__ globa
             // Skip over tiles that have exclusions, since they were already processed.
 
             while (skipTiles[tbx+TILE_SIZE-1] < pos) {
-                if (skipBase+tgx < NUM_TILES_WITH_EXCLUSIONS) {
+                if (skipBase+tgx < numTilesWithExclusions) {
                     ushort2 tile = exclusionTiles[skipBase+tgx];
                     skipTiles[threadIdx.x] = tile.x + tile.y*NUM_BLOCKS - tile.y*(tile.y+1)/2;
                 }
@@ -410,7 +410,7 @@ extern "C" __global__ void computeGBSAForce1(unsigned long long* __restrict__ fo
 #else
         unsigned int numTiles,
 #endif
-        const ushort2* __restrict__ exclusionTiles) {
+        const ushort2* __restrict__ exclusionTiles, int numTilesWithExclusions, int firstExclusionTile, int lastExclusionTile) {
     const unsigned int totalWarps = (blockDim.x*gridDim.x)/TILE_SIZE;
     const unsigned int warp = (blockIdx.x*blockDim.x+threadIdx.x)/TILE_SIZE;
     const unsigned int tgx = threadIdx.x & (TILE_SIZE-1);
@@ -420,9 +420,9 @@ extern "C" __global__ void computeGBSAForce1(unsigned long long* __restrict__ fo
 
     // First loop: process tiles that contain exclusions.
     
-    const unsigned int firstExclusionTile = FIRST_EXCLUSION_TILE+warp*(LAST_EXCLUSION_TILE-FIRST_EXCLUSION_TILE)/totalWarps;
-    const unsigned int lastExclusionTile = FIRST_EXCLUSION_TILE+(warp+1)*(LAST_EXCLUSION_TILE-FIRST_EXCLUSION_TILE)/totalWarps;
-    for (int pos = firstExclusionTile; pos < lastExclusionTile; pos++) {
+    const unsigned int startExclusionTile = firstExclusionTile+warp*(lastExclusionTile-firstExclusionTile)/totalWarps;
+    const unsigned int endExclusionTile = firstExclusionTile+(warp+1)*(lastExclusionTile-firstExclusionTile)/totalWarps;
+    for (int pos = startExclusionTile; pos < endExclusionTile; pos++) {
         const ushort2 tileIndices = exclusionTiles[pos];
         const unsigned int x = tileIndices.x;
         const unsigned int y = tileIndices.y;
@@ -600,7 +600,7 @@ extern "C" __global__ void computeGBSAForce1(unsigned long long* __restrict__ fo
             // Skip over tiles that have exclusions, since they were already processed.
 
             while (skipTiles[tbx+TILE_SIZE-1] < pos) {
-                if (skipBase+tgx < NUM_TILES_WITH_EXCLUSIONS) {
+                if (skipBase+tgx < numTilesWithExclusions) {
                     ushort2 tile = exclusionTiles[skipBase+tgx];
                     skipTiles[threadIdx.x] = tile.x + tile.y*NUM_BLOCKS - tile.y*(tile.y+1)/2;
                 }

@@ -117,7 +117,7 @@ extern "C" __global__ void findBlocksWithInteractions(real4 periodicBoxSize, rea
         unsigned int* __restrict__ interactionCount, int* __restrict__ interactingTiles, unsigned int* __restrict__ interactingAtoms, const real4* __restrict__ posq,
         unsigned int maxTiles, unsigned int startBlockIndex, unsigned int numBlocks, real2* __restrict__ sortedBlocks, const real4* __restrict__ sortedBlockCenter,
         const real4* __restrict__ sortedBlockBoundingBox, const unsigned int* __restrict__ exclusionIndices, const unsigned int* __restrict__ exclusionRowIndices,
-        real4* __restrict__ oldPositions, const int* __restrict__ rebuildNeighborList) {
+        int maxExclusions, real4* __restrict__ oldPositions, const int* __restrict__ rebuildNeighborList) {
 
     if (rebuildNeighborList[0] == 0)
         return; // The neighbor list doesn't need to be rebuilt.
@@ -128,11 +128,11 @@ extern "C" __global__ void findBlocksWithInteractions(real4 periodicBoxSize, rea
     const int warpIndex = (blockIdx.x*blockDim.x+threadIdx.x)/32;
     const int warpMask = (1<<indexInWarp)-1;
     __shared__ int workgroupBuffer[BUFFER_SIZE*(GROUP_SIZE/32)];
-    __shared__ int warpExclusions[MAX_EXCLUSIONS*(GROUP_SIZE/32)];
+    extern __shared__ int warpExclusions[];
     __shared__ real3 posBuffer[GROUP_SIZE];
     __shared__ volatile int workgroupTileIndex[GROUP_SIZE/32];
     int* buffer = workgroupBuffer+BUFFER_SIZE*(warpStart/32);
-    int* exclusionsForX = warpExclusions+MAX_EXCLUSIONS*(warpStart/32);
+    int* exclusionsForX = warpExclusions+maxExclusions*(warpStart/32);
     volatile int& tileStartIndex = workgroupTileIndex[warpStart/32];
 
     // Loop over blocks.
@@ -166,7 +166,7 @@ extern "C" __global__ void findBlocksWithInteractions(real4 periodicBoxSize, rea
         const int numExclusions = exclusionEnd-exclusionStart;
         for (int j = indexInWarp; j < numExclusions; j += 32)
             exclusionsForX[j] = exclusionIndices[exclusionStart+j];
-        if (MAX_EXCLUSIONS > 32)
+        if (maxExclusions > 32)
             __syncthreads();
         
         // Loop over atom blocks to search for neighbors.  The threads in a warp compare block1 against 32

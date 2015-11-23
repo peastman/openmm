@@ -2625,13 +2625,6 @@ double CudaCalcGBSAOBCForceKernel::execute(ContextImpl& context, bool includeFor
         defines["NUM_BLOCKS"] = cu.intToString(cu.getNumAtomBlocks());
         defines["FORCE_WORK_GROUP_SIZE"] = cu.intToString(nb.getForceThreadBlockSize());
         defines["TILE_SIZE"] = cu.intToString(CudaContext::TileSize);
-        int numExclusionTiles = nb.getExclusionTiles().getSize();
-        defines["NUM_TILES_WITH_EXCLUSIONS"] = cu.intToString(numExclusionTiles);
-        int numContexts = cu.getPlatformData().contexts.size();
-        int startExclusionIndex = cu.getContextIndex()*numExclusionTiles/numContexts;
-        int endExclusionIndex = (cu.getContextIndex()+1)*numExclusionTiles/numContexts;
-        defines["FIRST_EXCLUSION_TILE"] = cu.intToString(startExclusionIndex);
-        defines["LAST_EXCLUSION_TILE"] = cu.intToString(endExclusionIndex);
         map<string, string> replacements;
         CUmodule module = cu.createModule(CudaKernelSources::vectorOps+cu.replaceStrings(CudaKernelSources::gbsaObc1, replacements), defines);
         computeBornSumKernel = cu.getKernel(module, "computeBornSum");
@@ -2654,6 +2647,9 @@ double CudaCalcGBSAOBCForceKernel::execute(ContextImpl& context, bool includeFor
         else
             computeSumArgs.push_back(&maxTiles);
         computeSumArgs.push_back(&nb.getExclusionTiles().getDevicePointer());
+        computeSumArgs.push_back(&nb.getNumTilesWithExclusions());
+        computeSumArgs.push_back(&nb.getFirstExclusionTile());
+        computeSumArgs.push_back(&nb.getLastExclusionTile());
         force1Kernel = cu.getKernel(module, "computeGBSAForce1");
         force1Args.push_back(&cu.getForce().getDevicePointer());
         force1Args.push_back(&bornForce->getDevicePointer());
@@ -2676,6 +2672,9 @@ double CudaCalcGBSAOBCForceKernel::execute(ContextImpl& context, bool includeFor
         else
             force1Args.push_back(&maxTiles);
         force1Args.push_back(&nb.getExclusionTiles().getDevicePointer());
+        force1Args.push_back(&nb.getNumTilesWithExclusions());
+        force1Args.push_back(&nb.getFirstExclusionTile());
+        force1Args.push_back(&nb.getLastExclusionTile());
         reduceBornSumKernel = cu.getKernel(module, "reduceBornSum");
         reduceBornForceKernel = cu.getKernel(module, "reduceBornForce");
     }
@@ -3412,13 +3411,6 @@ double CudaCalcCustomGBForceKernel::execute(ContextImpl& context, bool includeFo
         // has not yet been initialized then.
 
         {
-            int numExclusionTiles = cu.getNonbondedUtilities().getExclusionTiles().getSize();
-            pairValueDefines["NUM_TILES_WITH_EXCLUSIONS"] = cu.intToString(numExclusionTiles);
-            int numContexts = cu.getPlatformData().contexts.size();
-            int startExclusionIndex = cu.getContextIndex()*numExclusionTiles/numContexts;
-            int endExclusionIndex = (cu.getContextIndex()+1)*numExclusionTiles/numContexts;
-            pairValueDefines["FIRST_EXCLUSION_TILE"] = cu.intToString(startExclusionIndex);
-            pairValueDefines["LAST_EXCLUSION_TILE"] = cu.intToString(endExclusionIndex);
             pairValueDefines["CUTOFF"] = cu.doubleToString(cutoff);
             CUmodule module = cu.createModule(CudaKernelSources::vectorOps+pairValueSrc, pairValueDefines);
             pairValueKernel = cu.getKernel(module, "computeN2Value");
@@ -3426,13 +3418,6 @@ double CudaCalcCustomGBForceKernel::execute(ContextImpl& context, bool includeFo
             pairValueDefines.clear();
         }
         {
-            int numExclusionTiles = cu.getNonbondedUtilities().getExclusionTiles().getSize();
-            pairEnergyDefines["NUM_TILES_WITH_EXCLUSIONS"] = cu.intToString(numExclusionTiles);
-            int numContexts = cu.getPlatformData().contexts.size();
-            int startExclusionIndex = cu.getContextIndex()*numExclusionTiles/numContexts;
-            int endExclusionIndex = (cu.getContextIndex()+1)*numExclusionTiles/numContexts;
-            pairEnergyDefines["FIRST_EXCLUSION_TILE"] = cu.intToString(startExclusionIndex);
-            pairEnergyDefines["LAST_EXCLUSION_TILE"] = cu.intToString(endExclusionIndex);
             pairEnergyDefines["CUTOFF"] = cu.doubleToString(cutoff);
             CUmodule module = cu.createModule(CudaKernelSources::vectorOps+pairEnergySrc, pairEnergyDefines);
             pairEnergyKernel = cu.getKernel(module, "computeN2Energy");
@@ -3465,6 +3450,9 @@ double CudaCalcCustomGBForceKernel::execute(ContextImpl& context, bool includeFo
         }
         else
             pairValueArgs.push_back(&maxTiles);
+        pairValueArgs.push_back(&nb.getNumTilesWithExclusions());
+        pairValueArgs.push_back(&nb.getFirstExclusionTile());
+        pairValueArgs.push_back(&nb.getLastExclusionTile());
         if (globals != NULL)
             pairValueArgs.push_back(&globals->getDevicePointer());
         for (int i = 0; i < (int) params->getBuffers().size(); i++) {
@@ -3503,6 +3491,9 @@ double CudaCalcCustomGBForceKernel::execute(ContextImpl& context, bool includeFo
         }
         else
             pairEnergyArgs.push_back(&maxTiles);
+        pairEnergyArgs.push_back(&nb.getNumTilesWithExclusions());
+        pairEnergyArgs.push_back(&nb.getFirstExclusionTile());
+        pairEnergyArgs.push_back(&nb.getLastExclusionTile());
         if (globals != NULL)
             pairEnergyArgs.push_back(&globals->getDevicePointer());
         for (int i = 0; i < (int) params->getBuffers().size(); i++) {

@@ -1294,6 +1294,7 @@ void CudaContext::reorderAtomsImpl() {
         posqCorrection->upload(newPosqCorrection);
     velm->upload(newVelm);
     atomIndexDevice->upload(atomIndex);
+    nonbonded->rebuildExceptions();
     for (int i = 0; i < (int) reorderListeners.size(); i++)
         reorderListeners[i]->execute();
 }
