@@ -1274,11 +1274,11 @@ void CudaContext::reorderAtomsImpl() {
                 int oldIndex = mol.offsets[molBins[i].second]+atoms[j];
                 int newIndex = mol.offsets[i]+atoms[j];
                 originalIndex[newIndex] = atomIndex[oldIndex];
-                newPosq[newIndex] = oldPosq[oldIndex];
+                newPosq[newIndex] = oldPosq[newIndex];
                 if (useMixedPrecision)
-                    newPosqCorrection[newIndex] = oldPosqCorrection[oldIndex];
-                newVelm[newIndex] = oldVelm[oldIndex];
-                newCellOffsets[newIndex] = posCellOffsets[oldIndex];
+                    newPosqCorrection[newIndex] = oldPosqCorrection[newIndex];
+                newVelm[newIndex] = oldVelm[newIndex];
+                newCellOffsets[newIndex] = posCellOffsets[newIndex];
             }
         }
     }
@@ -1294,7 +1294,6 @@ void CudaContext::reorderAtomsImpl() {
         posqCorrection->upload(newPosqCorrection);
     velm->upload(newVelm);
     atomIndexDevice->upload(atomIndex);
-    nonbonded->rebuildExceptions();
     for (int i = 0; i < (int) reorderListeners.size(); i++)
         reorderListeners[i]->execute();
 }

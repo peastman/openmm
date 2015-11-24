@@ -143,7 +143,6 @@ void CudaUpdateStateDataKernel::setTime(ContextImpl& context, double time) {
 
 void CudaUpdateStateDataKernel::getPositions(ContextImpl& context, vector<Vec3>& positions) {
     cu.setAsCurrent();
-    const vector<int>& order = cu.getAtomIndex();
     int numParticles = context.getSystem().getNumParticles();
     positions.resize(numParticles);
     Vec3 boxVectors[3];
@@ -154,7 +153,7 @@ void CudaUpdateStateDataKernel::getPositions(ContextImpl& context, vector<Vec3>&
         for (int i = 0; i < numParticles; ++i) {
             double4 pos = posq[i];
             int4 offset = cu.getPosCellOffsets()[i];
-            positions[order[i]] = Vec3(pos.x, pos.y, pos.z)-boxVectors[0]*offset.x-boxVectors[1]*offset.y-boxVectors[2]*offset.z;
+            positions[i] = Vec3(pos.x, pos.y, pos.z)-boxVectors[0]*offset.x-boxVectors[1]*offset.y-boxVectors[2]*offset.z;
         }
     }
     else if (cu.getUseMixedPrecision()) {
@@ -166,7 +165,7 @@ void CudaUpdateStateDataKernel::getPositions(ContextImpl& context, vector<Vec3>&
             float4 pos1 = posq[i];
             float4 pos2 = posCorrection[i];
             int4 offset = cu.getPosCellOffsets()[i];
-            positions[order[i]] = Vec3((double)pos1.x+(double)pos2.x, (double)pos1.y+(double)pos2.y, (double)pos1.z+(double)pos2.z)-boxVectors[0]*offset.x-boxVectors[1]*offset.y-boxVectors[2]*offset.z;
+            positions[i] = Vec3((double)pos1.x+(double)pos2.x, (double)pos1.y+(double)pos2.y, (double)pos1.z+(double)pos2.z)-boxVectors[0]*offset.x-boxVectors[1]*offset.y-boxVectors[2]*offset.z;
         }
     }
     else {
@@ -175,21 +174,20 @@ void CudaUpdateStateDataKernel::getPositions(ContextImpl& context, vector<Vec3>&
         for (int i = 0; i < numParticles; ++i) {
             float4 pos = posq[i];
             int4 offset = cu.getPosCellOffsets()[i];
-            positions[order[i]] = Vec3(pos.x, pos.y, pos.z)-boxVectors[0]*offset.x-boxVectors[1]*offset.y-boxVectors[2]*offset.z;
+            positions[i] = Vec3(pos.x, pos.y, pos.z)-boxVectors[0]*offset.x-boxVectors[1]*offset.y-boxVectors[2]*offset.z;
         }
     }
 }
 
 void CudaUpdateStateDataKernel::setPositions(ContextImpl& context, const vector<Vec3>& positions) {
     cu.setAsCurrent();
-    const vector<int>& order = cu.getAtomIndex();
     int numParticles = context.getSystem().getNumParticles();
     if (cu.getUseDoublePrecision()) {
         double4* posq = (double4*) cu.getPinnedBuffer();
         cu.getPosq().download(posq);
         for (int i = 0; i < numParticles; ++i) {
             double4& pos = posq[i];
-            const Vec3& p = positions[order[i]];
+            const Vec3& p = positions[i];
             pos.x = p[0];
             pos.y = p[1];
             pos.z = p[2];
@@ -203,7 +201,7 @@ void CudaUpdateStateDataKernel::setPositions(ContextImpl& context, const vector<
         cu.getPosq().download(posq);
         for (int i = 0; i < numParticles; ++i) {
             float4& pos = posq[i];
-            const Vec3& p = positions[order[i]];
+            const Vec3& p = positions[i];
             pos.x = (float) p[0];
             pos.y = (float) p[1];
             pos.z = (float) p[2];
@@ -216,7 +214,7 @@ void CudaUpdateStateDataKernel::setPositions(ContextImpl& context, const vector<
         float4* posCorrection = (float4*) cu.getPinnedBuffer();
         for (int i = 0; i < numParticles; ++i) {
             float4& c = posCorrection[i];
-            const Vec3& p = positions[order[i]];
+            const Vec3& p = positions[i];
             c.x = (float) (p[0]-(float)p[0]);
             c.y = (float) (p[1]-(float)p[1]);
             c.z = (float) (p[2]-(float)p[2]);
@@ -233,7 +231,6 @@ void CudaUpdateStateDataKernel::setPositions(ContextImpl& context, const vector<
 
 void CudaUpdateStateDataKernel::getVelocities(ContextImpl& context, vector<Vec3>& velocities) {
     cu.setAsCurrent();
-    const vector<int>& order = cu.getAtomIndex();
     int numParticles = context.getSystem().getNumParticles();
     velocities.resize(numParticles);
     if (cu.getUseDoublePrecision() || cu.getUseMixedPrecision()) {
@@ -242,7 +239,7 @@ void CudaUpdateStateDataKernel::getVelocities(ContextImpl& context, vector<Vec3>
         for (int i = 0; i < numParticles; ++i) {
             double4 vel = velm[i];
             int4 offset = cu.getPosCellOffsets()[i];
-            velocities[order[i]] = Vec3(vel.x, vel.y, vel.z);
+            velocities[i] = Vec3(vel.x, vel.y, vel.z);
         }
     }
     else {
@@ -251,21 +248,20 @@ void CudaUpdateStateDataKernel::getVelocities(ContextImpl& context, vector<Vec3>
         for (int i = 0; i < numParticles; ++i) {
             float4 vel = velm[i];
             int4 offset = cu.getPosCellOffsets()[i];
-            velocities[order[i]] = Vec3(vel.x, vel.y, vel.z);
+            velocities[i] = Vec3(vel.x, vel.y, vel.z);
         }
     }
 }
 
 void CudaUpdateStateDataKernel::setVelocities(ContextImpl& context, const vector<Vec3>& velocities) {
     cu.setAsCurrent();
-    const vector<int>& order = cu.getAtomIndex();
     int numParticles = context.getSystem().getNumParticles();
     if (cu.getUseDoublePrecision() || cu.getUseMixedPrecision()) {
         double4* velm = (double4*) cu.getPinnedBuffer();
         cu.getVelm().download(velm);
         for (int i = 0; i < numParticles; ++i) {
             double4& vel = velm[i];
-            const Vec3& p = velocities[order[i]];
+            const Vec3& p = velocities[i];
             vel.x = p[0];
             vel.y = p[1];
             vel.z = p[2];
@@ -279,7 +275,7 @@ void CudaUpdateStateDataKernel::setVelocities(ContextImpl& context, const vector
         cu.getVelm().download(velm);
         for (int i = 0; i < numParticles; ++i) {
             float4& vel = velm[i];
-            const Vec3& p = velocities[order[i]];
+            const Vec3& p = velocities[i];
             vel.x = p[0];
             vel.y = p[1];
             vel.z = p[2];
@@ -294,13 +290,12 @@ void CudaUpdateStateDataKernel::getForces(ContextImpl& context, vector<Vec3>& fo
     cu.setAsCurrent();
     long long* force = (long long*) cu.getPinnedBuffer();
     cu.getForce().download(force);
-    const vector<int>& order = cu.getAtomIndex();
     int numParticles = context.getSystem().getNumParticles();
     int paddedNumParticles = cu.getPaddedNumAtoms();
     forces.resize(numParticles);
     double scale = 1.0/(double) 0x100000000LL;
     for (int i = 0; i < numParticles; ++i)
-        forces[order[i]] = Vec3(scale*force[i], scale*force[i+paddedNumParticles], scale*force[i+paddedNumParticles*2]);
+        forces[i] = Vec3(scale*force[i], scale*force[i+paddedNumParticles], scale*force[i+paddedNumParticles*2]);
 }
 
 void CudaUpdateStateDataKernel::getPeriodicBoxVectors(ContextImpl& context, Vec3& a, Vec3& b, Vec3& c) const {
@@ -1978,16 +1973,14 @@ void CudaCalcNonbondedForceKernel::copyParametersToContext(ContextImpl& context,
     double4* posqd = (double4*) cu.getPinnedBuffer();
     vector<float2> sigmaEpsilonVector(cu.getPaddedNumAtoms(), make_float2(0, 0));
     double sumSquaredCharges = 0.0;
-    const vector<int>& order = cu.getAtomIndex();
     for (int i = 0; i < force.getNumParticles(); i++) {
-        int index = order[i];
         double charge, sigma, epsilon;
-        force.getParticleParameters(index, charge, sigma, epsilon);
+        force.getParticleParameters(i, charge, sigma, epsilon);
         if (cu.getUseDoublePrecision())
             posqd[i].w = charge;
         else
             posqf[i].w = (float) charge;
-        sigmaEpsilonVector[index] = make_float2((float) (0.5*sigma), (float) (2.0*sqrt(epsilon)));
+        sigmaEpsilonVector[i] = make_float2((float) (0.5*sigma), (float) (2.0*sqrt(epsilon)));
         sumSquaredCharges += charge*charge;
     }
     posq.upload(cu.getPinnedBuffer());

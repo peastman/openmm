@@ -276,6 +276,7 @@ public:
 private:
     class KernelSet;
     class BlockSortTrait;
+    class ReorderListener;
     CudaContext& context;
     std::map<int, KernelSet> groupKernels;
     CudaArray* exclusionTiles;
@@ -292,6 +293,8 @@ private:
     CudaArray* sortedBlockBoundingBox;
     CudaArray* oldPositions;
     CudaArray* rebuildNeighborList;
+    CudaArray* reorderedPosq;
+    CudaArray* reorderedForces;
     CudaSort* blockSorter;
     std::vector<void*> forceArgs, findBlockBoundsArgs, sortBoxDataArgs, findInteractingBlocksArgs;
     std::vector<std::vector<int> > atomExclusions;
@@ -302,6 +305,7 @@ private:
     double lastCutoff;
     bool useCutoff, usePeriodic, anyExclusions, usePadding, forceRebuildNeighborList;
     int startTileIndex, numTiles, startBlockIndex, numBlocks, maxTiles, maxExclusions, numTilesWithExclusions, firstExclusionTile, lastExclusionTile, numForceThreadBlocks, forceThreadBlockSize, numAtoms, groupFlags;
+    CUfunction addReorderedForcesKernel;
 };
 
 /**

@@ -6,11 +6,12 @@
  */
 extern "C" __global__ void findBlockBounds(int numAtoms, real4 periodicBoxSize, real4 invPeriodicBoxSize, real4 periodicBoxVecX, real4 periodicBoxVecY, real4 periodicBoxVecZ,
         const real4* __restrict__ posq, real4* __restrict__ blockCenter, real4* __restrict__ blockBoundingBox, int* __restrict__ rebuildNeighborList,
-        real2* __restrict__ sortedBlocks) {
+        real2* __restrict__ sortedBlocks, real4* __restrict__ reorderedPosq, const int* __restrict__ atomOrder) {
     int index = blockIdx.x*blockDim.x+threadIdx.x;
     int base = index*TILE_SIZE;
     while (base < numAtoms) {
-        real4 pos = posq[base];
+        real4 pos = posq[atomOrder[base]];
+        reorderedPosq[base] = pos;
 #ifdef USE_PERIODIC
         APPLY_PERIODIC_TO_POS(pos)
 #endif
@@ -18,7 +19,8 @@ extern "C" __global__ void findBlockBounds(int numAtoms, real4 periodicBoxSize, 
         real4 maxPos = pos;
         int last = min(base+TILE_SIZE, numAtoms);
         for (int i = base+1; i < last; i++) {
-            pos = posq[i];
+            pos = posq[atomOrder[i]];
+            reorderedPosq[i] = pos;
 #ifdef USE_PERIODIC
             real4 center = 0.5f*(maxPos+minPos);
             APPLY_PERIODIC_TO_POS_WITH_CENTER(pos, center)
@@ -277,4 +279,16 @@ extern "C" __global__ void findBlocksWithInteractions(real4 periodicBoxSize, rea
     
     for (int i = threadIdx.x+blockIdx.x*blockDim.x; i < NUM_ATOMS; i += blockDim.x*gridDim.x)
         oldPositions[i] = posq[i];
+}
+
+/**
+ * Add reordered forces to the main array of forces.
+ */
+extern "C" __global__ void addReorderedForces(long long* __restrict__ forces, long long* __restrict__ reorderedForces, const int* __restrict__ atomOrder) {
+    for (int i = threadIdx.x+blockIdx.x*blockDim.x; i < NUM_ATOMS; i += blockDim.x*gridDim.x) {
+        int j = atomOrder[i];
+        forces[j] += reorderedForces[i];
+        forces[j+PADDED_NUM_ATOMS] += reorderedForces[i+PADDED_NUM_ATOMS];
+        forces[j+2*PADDED_NUM_ATOMS] += reorderedForces[i+2*PADDED_NUM_ATOMS];
+    }
 }

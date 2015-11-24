@@ -65,7 +65,8 @@ private:
 CudaNonbondedUtilities::CudaNonbondedUtilities(CudaContext& context) : context(context), useCutoff(false), usePeriodic(false), anyExclusions(false), usePadding(true),
         exclusionIndices(NULL), exclusionRowIndices(NULL), exclusionTiles(NULL), exclusions(NULL), interactingTiles(NULL), interactingAtoms(NULL),
         interactionCount(NULL), blockCenter(NULL), blockBoundingBox(NULL), sortedBlocks(NULL), sortedBlockCenter(NULL), sortedBlockBoundingBox(NULL),
-        oldPositions(NULL), rebuildNeighborList(NULL), blockSorter(NULL), forceRebuildNeighborList(true), lastCutoff(0.0), groupFlags(0) {
+        oldPositions(NULL), rebuildNeighborList(NULL), reorderedPosq(NULL), reorderedForces(NULL), blockSorter(NULL), forceRebuildNeighborList(true),
+        lastCutoff(0.0), groupFlags(0) {
     // Decide how many thread blocks to use.
 
     string errorMessage = "Error initializing nonbonded utilities";
@@ -104,6 +105,10 @@ CudaNonbondedUtilities::~CudaNonbondedUtilities() {
         delete oldPositions;
     if (rebuildNeighborList != NULL)
         delete rebuildNeighborList;
+    if (reorderedPosq != NULL)
+        delete reorderedPosq;
+    if (reorderedForces != NULL)
+        delete reorderedForces;
     if (blockSorter != NULL)
         delete blockSorter;
 }
@@ -166,6 +171,18 @@ static bool compareUshort2(ushort2 a, ushort2 b) {
     return ((a.y < b.y) || (a.y == b.y && a.x < b.x));
 }
 
+class CudaNonbondedUtilities::ReorderListener : public CudaContext::ReorderListener {
+public:
+    ReorderListener(CudaContext& context, CudaNonbondedUtilities& nb) : context(context), nb(nb) {
+    }
+    void execute() {
+        nb.rebuildExceptions();
+    }
+private:
+    CudaContext& context;
+    CudaNonbondedUtilities& nb;
+};
+
 void CudaNonbondedUtilities::initialize(const System& system) {
     if (atomExclusions.size() == 0) {
         // No exclusions were specifically requested, so just mark every atom as not interacting with itself.
@@ -173,6 +190,15 @@ void CudaNonbondedUtilities::initialize(const System& system) {
         atomExclusions.resize(context.getNumAtoms());
         for (int i = 0; i < (int) atomExclusions.size(); i++)
             atomExclusions[i].push_back(i);
+    }
+    int paddedNumAtoms = context.getPaddedNumAtoms();
+    int elementSize = (context.getUseDoublePrecision() ? sizeof(double) : sizeof(float));
+    if (useCutoff) {
+        reorderedPosq = new CudaArray(context, paddedNumAtoms, 4*elementSize, "reorderedPosq");
+        reorderedForces = CudaArray::create<long long>(context, paddedNumAtoms*3, "reorderedForces");
+        context.addAutoclearBuffer(*reorderedForces);
+        context.getPosq().copyTo(*reorderedPosq);
+        context.addReorderListener(new ReorderListener(context, *this));
     }
 
     // Create the list of tiles.
@@ -200,7 +226,6 @@ void CudaNonbondedUtilities::initialize(const System& system) {
         interactingTiles = CudaArray::create<int>(context, maxTiles, "interactingTiles");
         interactingAtoms = CudaArray::create<int>(context, CudaContext::TileSize*maxTiles, "interactingAtoms");
         interactionCount = CudaArray::create<unsigned int>(context, 1, "interactionCount");
-        int elementSize = (context.getUseDoublePrecision() ? sizeof(double) : sizeof(float));
         blockCenter = new CudaArray(context, numAtomBlocks, 4*elementSize, "blockCenter");
         blockBoundingBox = new CudaArray(context, numAtomBlocks, 4*elementSize, "blockBoundingBox");
         sortedBlocks = new CudaArray(context, numAtomBlocks, 2*elementSize, "sortedBlocks");
@@ -215,9 +240,9 @@ void CudaNonbondedUtilities::initialize(const System& system) {
 
     // Record arguments for kernels.
 
-    forceArgs.push_back(&context.getForce().getDevicePointer());
+    forceArgs.push_back(useCutoff ? &reorderedForces->getDevicePointer() : &context.getForce().getDevicePointer());
     forceArgs.push_back(&context.getEnergyBuffer().getDevicePointer());
-    forceArgs.push_back(&context.getPosq().getDevicePointer());
+    forceArgs.push_back(useCutoff ? &reorderedPosq->getDevicePointer() : &context.getPosq().getDevicePointer());
     forceArgs.push_back(&exclusions->getDevicePointer());
     forceArgs.push_back(&exclusionTiles->getDevicePointer());
     forceArgs.push_back(&startTileIndex);
@@ -254,12 +279,14 @@ void CudaNonbondedUtilities::initialize(const System& system) {
         findBlockBoundsArgs.push_back(&blockBoundingBox->getDevicePointer());
         findBlockBoundsArgs.push_back(&rebuildNeighborList->getDevicePointer());
         findBlockBoundsArgs.push_back(&sortedBlocks->getDevicePointer());
+        findBlockBoundsArgs.push_back(&reorderedPosq->getDevicePointer());
+        findBlockBoundsArgs.push_back(&context.getAtomIndexArray().getDevicePointer());
         sortBoxDataArgs.push_back(&sortedBlocks->getDevicePointer());
         sortBoxDataArgs.push_back(&blockCenter->getDevicePointer());
         sortBoxDataArgs.push_back(&blockBoundingBox->getDevicePointer());
         sortBoxDataArgs.push_back(&sortedBlockCenter->getDevicePointer());
         sortBoxDataArgs.push_back(&sortedBlockBoundingBox->getDevicePointer());
-        sortBoxDataArgs.push_back(&context.getPosq().getDevicePointer());
+        sortBoxDataArgs.push_back(&reorderedPosq->getDevicePointer());
         sortBoxDataArgs.push_back(&oldPositions->getDevicePointer());
         sortBoxDataArgs.push_back(&interactionCount->getDevicePointer());
         sortBoxDataArgs.push_back(&rebuildNeighborList->getDevicePointer());
@@ -272,7 +299,7 @@ void CudaNonbondedUtilities::initialize(const System& system) {
         findInteractingBlocksArgs.push_back(&interactionCount->getDevicePointer());
         findInteractingBlocksArgs.push_back(&interactingTiles->getDevicePointer());
         findInteractingBlocksArgs.push_back(&interactingAtoms->getDevicePointer());
-        findInteractingBlocksArgs.push_back(&context.getPosq().getDevicePointer());
+        findInteractingBlocksArgs.push_back(&reorderedPosq->getDevicePointer());
         findInteractingBlocksArgs.push_back(&maxTiles);
         findInteractingBlocksArgs.push_back(&startBlockIndex);
         findInteractingBlocksArgs.push_back(&numBlocks);
@@ -433,6 +460,10 @@ void CudaNonbondedUtilities::computeInteractions(int forceGroups, bool includeFo
         if (kernel == NULL)
             kernel = createInteractionKernel(kernels.source, parameters, arguments, true, true, forceGroups, includeForces, includeEnergy);
         context.executeKernel(kernel, &forceArgs[0], numForceThreadBlocks*forceThreadBlockSize, forceThreadBlockSize);
+        if (useCutoff) {
+            void* args[] = {&context.getForce().getDevicePointer(), &reorderedForces->getDevicePointer(), &context.getAtomIndexArray().getDevicePointer()};
+            context.executeKernel(addReorderedForcesKernel, args, context.getNumAtoms());
+        }
     }
 }
 
@@ -502,6 +533,7 @@ void CudaNonbondedUtilities::createKernelsForGroups(int groups) {
         defines["TILE_SIZE"] = context.intToString(CudaContext::TileSize);
         defines["NUM_BLOCKS"] = context.intToString(context.getNumAtomBlocks());
         defines["NUM_ATOMS"] = context.intToString(context.getNumAtoms());
+        defines["PADDED_NUM_ATOMS"] = context.intToString(context.getPaddedNumAtoms());
         defines["PADDING"] = context.doubleToString(padding);
         defines["PADDED_CUTOFF"] = context.doubleToString(paddedCutoff);
         defines["PADDED_CUTOFF_SQUARED"] = context.doubleToString(paddedCutoff*paddedCutoff);
@@ -511,6 +543,8 @@ void CudaNonbondedUtilities::createKernelsForGroups(int groups) {
         kernels.findBlockBoundsKernel = context.getKernel(interactingBlocksProgram, "findBlockBounds");
         kernels.sortBoxDataKernel = context.getKernel(interactingBlocksProgram, "sortBoxData");
         kernels.findInteractingBlocksKernel = context.getKernel(interactingBlocksProgram, "findBlocksWithInteractions");
+        if (groupKernels.size() == 0)
+            addReorderedForcesKernel = context.getKernel(interactingBlocksProgram, "addReorderedForces");
     }
     groupKernels[groups] = kernels;
 }
