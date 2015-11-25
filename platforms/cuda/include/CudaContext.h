@@ -43,6 +43,7 @@
 #include "windowsExportCuda.h"
 #include "CudaPlatform.h"
 #include "openmm/Kernel.h"
+#include "openmm/internal/ContextImpl.h"
 
 typedef unsigned int tileflags;
 
@@ -76,7 +77,7 @@ public:
     class ForcePostComputation;
     static const int ThreadBlockSize;
     static const int TileSize;
-    CudaContext(const System& system, int deviceIndex, bool useBlockingSync, const std::string& precision,
+    CudaContext(const System& system, const ContextImpl& contextImpl, int deviceIndex, bool useBlockingSync, const std::string& precision,
             const std::string& compiler, const std::string& tempDir, const std::string& hostCompiler, CudaPlatform::PlatformData& platformData);
     ~CudaContext();
     /**
@@ -561,6 +562,7 @@ private:
     void reorderAtomsImpl();
     static bool hasInitializedCuda;
     const System& system;
+    const ContextImpl& contextImpl;
     double time, computeCapability;
     CudaPlatform::PlatformData& platformData;
     int deviceIndex;

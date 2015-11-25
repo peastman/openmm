@@ -73,8 +73,8 @@ const int CudaContext::ThreadBlockSize = 64;
 const int CudaContext::TileSize = sizeof(tileflags)*8;
 bool CudaContext::hasInitializedCuda = false;
 
-CudaContext::CudaContext(const System& system, int deviceIndex, bool useBlockingSync, const string& precision, const string& compiler,
-        const string& tempDir, const std::string& hostCompiler, CudaPlatform::PlatformData& platformData) : system(system), currentStream(0),
+CudaContext::CudaContext(const System& system, const ContextImpl& contextImpl, int deviceIndex, bool useBlockingSync, const string& precision, const string& compiler,
+        const string& tempDir, const std::string& hostCompiler, CudaPlatform::PlatformData& platformData) : system(system), contextImpl(contextImpl), currentStream(0),
         time(0.0), platformData(platformData), stepCount(0), computeForceCount(0), stepsSinceReorder(99999), contextIsValid(false), atomsWereReordered(false), hasCompilerKernel(false),
         pinnedBuffer(NULL), posq(NULL), posqCorrection(NULL), velm(NULL), force(NULL), energyBuffer(NULL), integration(NULL), expression(NULL), bonded(NULL), nonbonded(NULL), thread(NULL) {
     this->compiler = "\""+compiler+"\"";
@@ -1165,157 +1165,120 @@ void CudaContext::reorderAtomsImpl() {
             maxz = max(maxz, pos.z);
         }
     }
+    
+    // Loop over molecules and reorder them.
+    
+    const vector<vector<int> >& molecules = contextImpl.getMolecules();
+    Real binWidth = (Real) (max(max(maxx-minx, maxy-miny), maxz-minz)/255.0);
+    Real invBinWidth = (Real) (1.0/binWidth);
+    vector<pair<int, int> > bins;
+    bitmask_t coords[3];
+    for (int molecule = 0; molecule < molecules.size(); molecule++) {
+        // Find the center of the molecule.
 
-    // Loop over each group of identical molecules and reorder them.
-
-    vector<int> originalIndex(numAtoms);
-    vector<Real4> newPosq(paddedNumAtoms);
-    vector<Real4> newPosqCorrection(paddedNumAtoms);
-    vector<Mixed4> newVelm(paddedNumAtoms);
-    vector<int4> newCellOffsets(numAtoms);
-    for (int group = 0; group < (int) moleculeGroups.size(); group++) {
-        // Find the center of each molecule.
-
-        MoleculeGroup& mol = moleculeGroups[group];
-        int numMolecules = mol.offsets.size();
-        vector<int>& atoms = mol.atoms;
-        vector<Real4> molPos(numMolecules);
-        Real invNumAtoms = (Real) (1.0/atoms.size());
-        for (int i = 0; i < numMolecules; i++) {
-            molPos[i].x = 0.0f;
-            molPos[i].y = 0.0f;
-            molPos[i].z = 0.0f;
-            for (int j = 0; j < (int)atoms.size(); j++) {
-                int atom = atoms[j]+mol.offsets[i];
-                const Real4& pos = oldPosq[atom];
-                molPos[i].x += pos.x;
-                molPos[i].y += pos.y;
-                molPos[i].z += pos.z;
-            }
-            molPos[i].x *= invNumAtoms;
-            molPos[i].y *= invNumAtoms;
-            molPos[i].z *= invNumAtoms;
-            if (molPos[i].x != molPos[i].x)
-                throw OpenMMException("Particle coordinate is nan");
+        const vector<int>& atoms = molecules[molecule];
+        int numAtomsInMolecule = atoms.size();
+        Real invNumAtoms = (Real) (1.0/numAtomsInMolecule);
+        Real4 center;
+        center.x = 0.0f;
+        center.y = 0.0f;
+        center.z = 0.0f;
+        for (int i = 0; i < numAtomsInMolecule; i++) {
+            int atom = atoms[i];
+            const Real4& pos = oldPosq[atom];
+            center.x += pos.x;
+            center.y += pos.y;
+            center.z += pos.z;
         }
-        if (nonbonded->getUsePeriodic()) {
-            // Move each molecule position into the same box.
+        center.x *= invNumAtoms;
+        center.y *= invNumAtoms;
+        center.z *= invNumAtoms;
+        if (center.x != center.x)
+            throw OpenMMException("Particle coordinate is nan");
+        
+        // Move each molecule position into the same box.
 
-            for (int i = 0; i < numMolecules; i++) {
-                Real4 center = molPos[i];
-                int zcell = (int) floor(center.z*invPeriodicBoxSize.z);
-                center.x -= zcell*periodicBoxVecZ.x;
-                center.y -= zcell*periodicBoxVecZ.y;
-                center.z -= zcell*periodicBoxVecZ.z;
-                int ycell = (int) floor(center.y*invPeriodicBoxSize.y);
-                center.x -= ycell*periodicBoxVecY.x;
-                center.y -= ycell*periodicBoxVecY.y;
-                int xcell = (int) floor(center.x*invPeriodicBoxSize.x);
-                center.x -= xcell*periodicBoxVecX.x;
-                if (xcell != 0 || ycell != 0 || zcell != 0) {
-                    Real dx = molPos[i].x-center.x;
-                    Real dy = molPos[i].y-center.y;
-                    Real dz = molPos[i].z-center.z;
-                    molPos[i] = center;
-                    for (int j = 0; j < (int) atoms.size(); j++) {
-                        int atom = atoms[j]+mol.offsets[i];
-                        Real4 p = oldPosq[atom];
-                        p.x -= dx;
-                        p.y -= dy;
-                        p.z -= dz;
-                        oldPosq[atom] = p;
-                        posCellOffsets[atom].x -= xcell;
-                        posCellOffsets[atom].y -= ycell;
-                        posCellOffsets[atom].z -= zcell;
-                    }
+        if (nonbonded->getUsePeriodic()) {
+            Real4 newPos = center;
+            int zcell = (int) floor(newPos.z*invPeriodicBoxSize.z);
+            newPos.x -= zcell*periodicBoxVecZ.x;
+            newPos.y -= zcell*periodicBoxVecZ.y;
+            newPos.z -= zcell*periodicBoxVecZ.z;
+            int ycell = (int) floor(newPos.y*invPeriodicBoxSize.y);
+            newPos.x -= ycell*periodicBoxVecY.x;
+            newPos.y -= ycell*periodicBoxVecY.y;
+            int xcell = (int) floor(newPos.x*invPeriodicBoxSize.x);
+            newPos.x -= xcell*periodicBoxVecX.x;
+            if (xcell != 0 || ycell != 0 || zcell != 0) {
+                Real dx = center.x-newPos.x;
+                Real dy = center.y-newPos.y;
+                Real dz = center.z-newPos.z;
+                center = newPos;
+                for (int j = 0; j < atoms.size(); j++) {
+                    int atom = atoms[j];
+                    Real4 p = oldPosq[atom];
+                    p.x -= dx;
+                    p.y -= dy;
+                    p.z -= dz;
+                    oldPosq[atom] = p;
+                    posCellOffsets[atom].x -= xcell;
+                    posCellOffsets[atom].y -= ycell;
+                    posCellOffsets[atom].z -= zcell;
                 }
             }
         }
-
-        // Select a bin for each molecule, then sort them by bin.
-
-//        bool useHilbert = (numMolecules > 5000 || atoms.size() > 8); // For small systems, a simple zigzag curve works better than a Hilbert curve.
-//        Real binWidth;
-//        if (useHilbert)
-//            binWidth = (Real) (max(max(maxx-minx, maxy-miny), maxz-minz)/255.0);
-//        else
-//            binWidth = (Real) (0.2*nonbonded->getMaxCutoffDistance());
-//        Real invBinWidth = (Real) (1.0/binWidth);
-//        int xbins = 1 + (int) ((maxx-minx)*invBinWidth);
-//        int ybins = 1 + (int) ((maxy-miny)*invBinWidth);
-//        vector<pair<int, int> > molBins(numMolecules);
-//        bitmask_t coords[3];
-//        for (int i = 0; i < numMolecules; i++) {
-//            int x = (int) ((molPos[i].x-minx)*invBinWidth);
-//            int y = (int) ((molPos[i].y-miny)*invBinWidth);
-//            int z = (int) ((molPos[i].z-minz)*invBinWidth);
-//            int bin;
-//            if (useHilbert) {
-//                coords[0] = x;
-//                coords[1] = y;
-//                coords[2] = z;
-//                bin = (int) hilbert_c2i(3, 8, coords);
-//            }
-//            else {
-//                int yodd = y&1;
-//                int zodd = z&1;
-//                bin = z*xbins*ybins;
-//                bin += (zodd ? ybins-y : y)*xbins;
-//                bin += (yodd ? xbins-x : x);
-//            }
-//            molBins[i] = pair<int, int>(bin, i);
-//        }
-//        sort(molBins.begin(), molBins.end());
-//
-//        // Reorder the atoms.
-//
-//        for (int i = 0; i < numMolecules; i++) {
-//            for (int j = 0; j < (int)atoms.size(); j++) {
-//                int oldIndex = mol.offsets[molBins[i].second]+atoms[j];
-//                int newIndex = mol.offsets[i]+atoms[j];
-//                originalIndex[newIndex] = atomIndex[oldIndex];
-//                newPosq[newIndex] = oldPosq[newIndex];
-//                if (useMixedPrecision)
-//                    newPosqCorrection[newIndex] = oldPosqCorrection[newIndex];
-//                newVelm[newIndex] = oldVelm[newIndex];
-//                newCellOffsets[newIndex] = posCellOffsets[newIndex];
-//            }
-//        }
+        
+        // Position the molecule along the Hilbert curve.
+        
+        if (numAtomsInMolecule <= TileSize) {
+            // This is a small molecule, so sort it as a unit.
+            
+            int x = (int) ((center.x-minx)*invBinWidth);
+            int y = (int) ((center.y-miny)*invBinWidth);
+            int z = (int) ((center.z-minz)*invBinWidth);
+            coords[0] = x;
+            coords[1] = y;
+            coords[2] = z;
+            int bin = (int) hilbert_c2i(3, 8, coords);
+            bins.push_back(make_pair(bin, numAtoms+molecule));
+        }
+        else {
+            // Sort the atoms individually.
+            
+            for (int i = 0; i < numAtomsInMolecule; i++) {
+                int atom = atoms[i];
+                Real4 pos = oldPosq[atom];
+                int x = (int) ((pos.x-minx)*invBinWidth);
+                int y = (int) ((pos.y-miny)*invBinWidth);
+                int z = (int) ((pos.z-minz)*invBinWidth);
+                coords[0] = x;
+                coords[1] = y;
+                coords[2] = z;
+                int bin = (int) hilbert_c2i(3, 8, coords);
+                bins.push_back(make_pair(bin, atom));
+            }
+        }
     }
-    
-    
-    
-    
-    Real binWidth = (Real) (max(max(maxx-minx, maxy-miny), maxz-minz)/255.0);
-    Real invBinWidth = (Real) (1.0/binWidth);
-    vector<pair<int, int> > atomBins(numAtoms);
-    bitmask_t coords[3];
-    for (int i = 0; i < numAtoms; i++) {
-        int x = (int) ((oldPosq[i].x-minx)*invBinWidth);
-        int y = (int) ((oldPosq[i].y-miny)*invBinWidth);
-        int z = (int) ((oldPosq[i].z-minz)*invBinWidth);
-        coords[0] = x;
-        coords[1] = y;
-        coords[2] = z;
-        int bin = (int) hilbert_c2i(3, 8, coords);
-        atomBins[i] = pair<int, int>(bin, i);
+    sort(bins.begin(), bins.end());
+    int nextIndex = 0;
+    for (int i = 0; i < bins.size(); i++) {
+        if (bins[i].second < numAtoms) {
+            // This is an individual atom.
+            
+            atomIndex[nextIndex++] = bins[i].second;
+        }
+        else {
+            // This is a molecule.
+            
+            int molecule = bins[i].second-numAtoms;
+            const vector<int>& atoms = molecules[molecule];
+            for (int j = 0; j < atoms.size(); j++)
+                atomIndex[nextIndex++] = atoms[j];
+        }
     }
-    sort(atomBins.begin(), atomBins.end());
-    for (int i = 0; i < numAtoms; i++)
-        atomIndex[i] = atomBins[i].second;
-    
-    
 
     // Update the streams.
 
-//    for (int i = 0; i < numAtoms; i++) {
-//        atomIndex[i] = originalIndex[i];
-//        posCellOffsets[i] = newCellOffsets[i];
-//    }
-//    posq->upload(newPosq);
-//    if (useMixedPrecision)
-//        posqCorrection->upload(newPosqCorrection);
-//    velm->upload(newVelm);
     atomIndexDevice->upload(atomIndex);
     for (int i = 0; i < (int) reorderListeners.size(); i++)
         reorderListeners[i]->execute();
