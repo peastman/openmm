@@ -1234,65 +1234,88 @@ void CudaContext::reorderAtomsImpl() {
 
         // Select a bin for each molecule, then sort them by bin.
 
-        bool useHilbert = (numMolecules > 5000 || atoms.size() > 8); // For small systems, a simple zigzag curve works better than a Hilbert curve.
-        Real binWidth;
-        if (useHilbert)
-            binWidth = (Real) (max(max(maxx-minx, maxy-miny), maxz-minz)/255.0);
-        else
-            binWidth = (Real) (0.2*nonbonded->getMaxCutoffDistance());
-        Real invBinWidth = (Real) (1.0/binWidth);
-        int xbins = 1 + (int) ((maxx-minx)*invBinWidth);
-        int ybins = 1 + (int) ((maxy-miny)*invBinWidth);
-        vector<pair<int, int> > molBins(numMolecules);
-        bitmask_t coords[3];
-        for (int i = 0; i < numMolecules; i++) {
-            int x = (int) ((molPos[i].x-minx)*invBinWidth);
-            int y = (int) ((molPos[i].y-miny)*invBinWidth);
-            int z = (int) ((molPos[i].z-minz)*invBinWidth);
-            int bin;
-            if (useHilbert) {
-                coords[0] = x;
-                coords[1] = y;
-                coords[2] = z;
-                bin = (int) hilbert_c2i(3, 8, coords);
-            }
-            else {
-                int yodd = y&1;
-                int zodd = z&1;
-                bin = z*xbins*ybins;
-                bin += (zodd ? ybins-y : y)*xbins;
-                bin += (yodd ? xbins-x : x);
-            }
-            molBins[i] = pair<int, int>(bin, i);
-        }
-        sort(molBins.begin(), molBins.end());
-
-        // Reorder the atoms.
-
-        for (int i = 0; i < numMolecules; i++) {
-            for (int j = 0; j < (int)atoms.size(); j++) {
-                int oldIndex = mol.offsets[molBins[i].second]+atoms[j];
-                int newIndex = mol.offsets[i]+atoms[j];
-                originalIndex[newIndex] = atomIndex[oldIndex];
-                newPosq[newIndex] = oldPosq[newIndex];
-                if (useMixedPrecision)
-                    newPosqCorrection[newIndex] = oldPosqCorrection[newIndex];
-                newVelm[newIndex] = oldVelm[newIndex];
-                newCellOffsets[newIndex] = posCellOffsets[newIndex];
-            }
-        }
+//        bool useHilbert = (numMolecules > 5000 || atoms.size() > 8); // For small systems, a simple zigzag curve works better than a Hilbert curve.
+//        Real binWidth;
+//        if (useHilbert)
+//            binWidth = (Real) (max(max(maxx-minx, maxy-miny), maxz-minz)/255.0);
+//        else
+//            binWidth = (Real) (0.2*nonbonded->getMaxCutoffDistance());
+//        Real invBinWidth = (Real) (1.0/binWidth);
+//        int xbins = 1 + (int) ((maxx-minx)*invBinWidth);
+//        int ybins = 1 + (int) ((maxy-miny)*invBinWidth);
+//        vector<pair<int, int> > molBins(numMolecules);
+//        bitmask_t coords[3];
+//        for (int i = 0; i < numMolecules; i++) {
+//            int x = (int) ((molPos[i].x-minx)*invBinWidth);
+//            int y = (int) ((molPos[i].y-miny)*invBinWidth);
+//            int z = (int) ((molPos[i].z-minz)*invBinWidth);
+//            int bin;
+//            if (useHilbert) {
+//                coords[0] = x;
+//                coords[1] = y;
+//                coords[2] = z;
+//                bin = (int) hilbert_c2i(3, 8, coords);
+//            }
+//            else {
+//                int yodd = y&1;
+//                int zodd = z&1;
+//                bin = z*xbins*ybins;
+//                bin += (zodd ? ybins-y : y)*xbins;
+//                bin += (yodd ? xbins-x : x);
+//            }
+//            molBins[i] = pair<int, int>(bin, i);
+//        }
+//        sort(molBins.begin(), molBins.end());
+//
+//        // Reorder the atoms.
+//
+//        for (int i = 0; i < numMolecules; i++) {
+//            for (int j = 0; j < (int)atoms.size(); j++) {
+//                int oldIndex = mol.offsets[molBins[i].second]+atoms[j];
+//                int newIndex = mol.offsets[i]+atoms[j];
+//                originalIndex[newIndex] = atomIndex[oldIndex];
+//                newPosq[newIndex] = oldPosq[newIndex];
+//                if (useMixedPrecision)
+//                    newPosqCorrection[newIndex] = oldPosqCorrection[newIndex];
+//                newVelm[newIndex] = oldVelm[newIndex];
+//                newCellOffsets[newIndex] = posCellOffsets[newIndex];
+//            }
+//        }
     }
+    
+    
+    
+    
+    Real binWidth = (Real) (max(max(maxx-minx, maxy-miny), maxz-minz)/255.0);
+    Real invBinWidth = (Real) (1.0/binWidth);
+    vector<pair<int, int> > atomBins(numAtoms);
+    bitmask_t coords[3];
+    for (int i = 0; i < numAtoms; i++) {
+        int x = (int) ((oldPosq[i].x-minx)*invBinWidth);
+        int y = (int) ((oldPosq[i].y-miny)*invBinWidth);
+        int z = (int) ((oldPosq[i].z-minz)*invBinWidth);
+        coords[0] = x;
+        coords[1] = y;
+        coords[2] = z;
+        int bin = (int) hilbert_c2i(3, 8, coords);
+        atomBins[i] = pair<int, int>(bin, i);
+    }
+    sort(atomBins.begin(), atomBins.end());
+    for (int i = 0; i < numAtoms; i++)
+        atomIndex[i] = atomBins[i].second;
+    
+    
 
     // Update the streams.
 
-    for (int i = 0; i < numAtoms; i++) {
-        atomIndex[i] = originalIndex[i];
-        posCellOffsets[i] = newCellOffsets[i];
-    }
-    posq->upload(newPosq);
-    if (useMixedPrecision)
-        posqCorrection->upload(newPosqCorrection);
-    velm->upload(newVelm);
+//    for (int i = 0; i < numAtoms; i++) {
+//        atomIndex[i] = originalIndex[i];
+//        posCellOffsets[i] = newCellOffsets[i];
+//    }
+//    posq->upload(newPosq);
+//    if (useMixedPrecision)
+//        posqCorrection->upload(newPosqCorrection);
+//    velm->upload(newVelm);
     atomIndexDevice->upload(atomIndex);
     for (int i = 0; i < (int) reorderListeners.size(); i++)
         reorderListeners[i]->execute();

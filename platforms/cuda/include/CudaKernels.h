@@ -629,6 +629,10 @@ public:
      * @param nz      the number of grid points along the Z axis
      */
     void getPMEParameters(double& alpha, int& nx, int& ny, int& nz) const;
+    /**
+     * Store per-particle parameters that need to take atom reordering into account.
+     */
+    void recordReorderedParameters();
 private:
     class SortTrait : public CudaSort::SortTrait {
         int getDataSize() const {return 8;}
@@ -645,6 +649,7 @@ private:
     class PmePostComputation;
     class SyncStreamPreComputation;
     class SyncStreamPostComputation;
+    class ReorderListener;
     CudaContext& cu;
     bool hasInitializedFFT;
     CudaArray* sigmaEpsilon;
@@ -676,6 +681,7 @@ private:
     CUfunction pmeInterpolateForceKernel;
     std::map<std::string, std::string> pmeDefines;
     std::vector<std::pair<int, int> > exceptionAtoms;
+    std::vector<float2> sigmaEpsilonVector;
     double ewaldSelfEnergy, dispersionCoefficient, alpha;
     int interpolateForceThreads;
     int gridSizeX, gridSizeY, gridSizeZ;

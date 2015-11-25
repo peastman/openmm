@@ -1474,6 +1474,17 @@ private:
     int forceGroup;
 };
 
+class CudaCalcNonbondedForceKernel::ReorderListener : public CudaContext::ReorderListener {
+public:
+    ReorderListener(CudaCalcNonbondedForceKernel& nb) : nb(nb) {
+    }
+    void execute() {
+        nb.recordReorderedParameters();
+    }
+private:
+    CudaCalcNonbondedForceKernel& nb;
+};
+
 CudaCalcNonbondedForceKernel::~CudaCalcNonbondedForceKernel() {
     cu.setAsCurrent();
     if (sigmaEpsilon != NULL)
@@ -1540,7 +1551,7 @@ void CudaCalcNonbondedForceKernel::initialize(const System& system, const Nonbon
     vector<double4> temp(posq.getSize());
     float4* posqf = (float4*) &temp[0];
     double4* posqd = (double4*) &temp[0];
-    vector<float2> sigmaEpsilonVector(cu.getPaddedNumAtoms(), make_float2(0, 0));
+    sigmaEpsilonVector.resize(cu.getPaddedNumAtoms(), make_float2(0, 0));
     vector<vector<int> > exclusionList(numParticles);
     double sumSquaredCharges = 0.0;
     hasCoulomb = false;
@@ -1566,6 +1577,7 @@ void CudaCalcNonbondedForceKernel::initialize(const System& system, const Nonbon
     }
     posq.upload(&temp[0]);
     sigmaEpsilon->upload(sigmaEpsilonVector);
+    cu.addReorderListener(new ReorderListener(*this));
     nonbondedMethod = CalcNonbondedForceKernel::NonbondedMethod(force.getNonbondedMethod());
     bool useCutoff = (nonbondedMethod != NoCutoff);
     bool usePeriodic = (nonbondedMethod != NoCutoff && nonbondedMethod != CutoffNonPeriodic);
@@ -1971,7 +1983,6 @@ void CudaCalcNonbondedForceKernel::copyParametersToContext(ContextImpl& context,
     posq.download(cu.getPinnedBuffer());
     float4* posqf = (float4*) cu.getPinnedBuffer();
     double4* posqd = (double4*) cu.getPinnedBuffer();
-    vector<float2> sigmaEpsilonVector(cu.getPaddedNumAtoms(), make_float2(0, 0));
     double sumSquaredCharges = 0.0;
     for (int i = 0; i < force.getNumParticles(); i++) {
         double charge, sigma, epsilon;
@@ -1984,7 +1995,7 @@ void CudaCalcNonbondedForceKernel::copyParametersToContext(ContextImpl& context,
         sumSquaredCharges += charge*charge;
     }
     posq.upload(cu.getPinnedBuffer());
-    sigmaEpsilon->upload(sigmaEpsilonVector);
+    recordReorderedParameters();
     
     // Record the exceptions.
     
@@ -2005,7 +2016,17 @@ void CudaCalcNonbondedForceKernel::copyParametersToContext(ContextImpl& context,
         ewaldSelfEnergy = (cu.getContextIndex() == 0 ? -ONE_4PI_EPS0*alpha*sumSquaredCharges/sqrt(M_PI) : 0.0);
     if (force.getUseDispersionCorrection() && cu.getContextIndex() == 0 && (nonbondedMethod == CutoffPeriodic || nonbondedMethod == Ewald || nonbondedMethod == PME))
         dispersionCoefficient = NonbondedForceImpl::calcDispersionCorrection(context.getSystem(), force);
-    cu.invalidateMolecules();
+}
+
+void CudaCalcNonbondedForceKernel::recordReorderedParameters() {
+    vector<float2> reorderedSigmaEpsilon(cu.getPaddedNumAtoms());
+    for (int i = 0; i < cu.getNumAtoms(); i++) {
+        int index = cu.getAtomIndex()[i];
+        reorderedSigmaEpsilon[i] = sigmaEpsilonVector[index];
+    }
+    for (int i = cu.getNumAtoms(); i < cu.getPaddedNumAtoms(); i++)
+        reorderedSigmaEpsilon[i] = sigmaEpsilonVector[i];
+    sigmaEpsilon->upload(reorderedSigmaEpsilon);
 }
 
 void CudaCalcNonbondedForceKernel::getPMEParameters(double& alpha, int& nx, int& ny, int& nz) const {
