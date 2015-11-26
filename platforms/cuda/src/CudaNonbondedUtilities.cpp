@@ -316,35 +316,59 @@ void CudaNonbondedUtilities::initialize(const System& system) {
 
 void CudaNonbondedUtilities::rebuildExceptions() {
     string errorMessage = "Error building exception data";    
-
-    // Build a list of tiles that contain exclusions.
-
     int numAtomBlocks = context.getNumAtomBlocks();
     int numContexts = context.getPlatformData().contexts.size();
-    set<pair<int, int> > tilesWithExclusions;
-    set<int> blocks;
     const vector<int>& order = context.getAtomIndex();
     vector<int> inverseOrder(order.size());
     for (int i = 0; i < order.size(); i++)
         inverseOrder[order[i]] = i;
-    for (int block = 0; block < numAtomBlocks; block++) {
-        int firstIndex = block*CudaContext::TileSize;
+
+    // Build a list of tiles that contain exclusions.
+
+    map<ushort2,vector<tileflags>,bool(*)(ushort2,ushort2)> tilesExclusionData(compareUshort2);
+    tileflags allFlags = (tileflags) -1;
+    for (int block1 = 0; block1 < numAtomBlocks; block1++) {
+        ushort2 diagonalKey = make_ushort2((unsigned short) block1, (unsigned short) block1);
+        tilesExclusionData[diagonalKey] = vector<tileflags>(CudaContext::TileSize, allFlags);
+        vector<tileflags>& diagonal = tilesExclusionData[diagonalKey];
+        int firstIndex = block1*CudaContext::TileSize;
         int lastIndex = min(firstIndex+CudaContext::TileSize, numAtoms);
-        blocks.clear();
         for (int index1 = firstIndex; index1 < lastIndex; ++index1) {
             int atom1 = order[index1];
+            int offset1 = index1-block1*CudaContext::TileSize;
             for (int j = 0; j < (int) atomExclusions[atom1].size(); ++j) {
                 int index2 = inverseOrder[atomExclusions[atom1][j]];
-                blocks.insert(index2/CudaContext::TileSize);
+                int block2 = index2/CudaContext::TileSize;
+                int offset2 = index2-block2*CudaContext::TileSize;
+                if (block1 == block2) {
+                    // This is in the diagonal tile.
+                    
+                    diagonal[offset2] &= allFlags-(1<<offset1);
+                }
+                else {
+                    ushort2 key = make_ushort2((unsigned short) max(block1, block2), (unsigned short) min(block1, block2));
+                    map<ushort2,vector<tileflags> >::iterator tile = tilesExclusionData.find(key);
+                    if (tile == tilesExclusionData.end()) {
+                        tilesExclusionData[key] = vector<tileflags>(CudaContext::TileSize, allFlags);
+                        tile = tilesExclusionData.find(key);;
+                    }
+                    if (block1 > block2) {
+                        tile->second[offset1] &= allFlags-(1<<offset2);
+                    }
+                    else {
+                        tile->second[offset2] &= allFlags-(1<<offset1);
+                    }
+                }
             }
         }
-        for (set<int>::const_iterator iter = blocks.begin(); iter != blocks.end(); ++iter)
-            tilesWithExclusions.insert(make_pair(max(block, *iter), min(block, *iter)));
     }
+    
+    // Record the list of tiles.
+    
     vector<ushort2> exclusionTilesVec;
-    for (set<pair<int, int> >::const_iterator iter = tilesWithExclusions.begin(); iter != tilesWithExclusions.end(); ++iter)
-        exclusionTilesVec.push_back(make_ushort2((unsigned short) iter->first, (unsigned short) iter->second));
-    sort(exclusionTilesVec.begin(), exclusionTilesVec.end(), compareUshort2);
+    exclusionTilesVec.reserve(tilesExclusionData.size());
+    for (map<ushort2,vector<tileflags> >::const_iterator iter = tilesExclusionData.begin(); iter != tilesExclusionData.end(); ++iter)
+        exclusionTilesVec.push_back(iter->first);
     if (exclusionTiles != NULL && exclusionTiles->getSize() < exclusionTilesVec.size()) {
         delete exclusionTiles;
         exclusionTiles = NULL;
@@ -352,12 +376,10 @@ void CudaNonbondedUtilities::rebuildExceptions() {
     if (exclusionTiles == NULL)
         exclusionTiles = CudaArray::create<ushort2>(context, exclusionTilesVec.size(), "exclusionTiles");
     CHECK_RESULT(cuMemcpyHtoDAsync(exclusionTiles->getDevicePointer(), &exclusionTilesVec[0], exclusionTilesVec.size()*sizeof(ushort2), context.getCurrentStream()));
+
+    // Build the indices used to look up exclusions.
+    
     numTilesWithExclusions = exclusionTilesVec.size();
-    map<pair<int, int>, int> exclusionTileMap;
-    for (int i = 0; i < (int) exclusionTilesVec.size(); i++) {
-        ushort2 tile = exclusionTilesVec[i];
-        exclusionTileMap[make_pair(tile.x, tile.y)] = i;
-    }
     vector<vector<int> > exclusionBlocksForBlock(numAtomBlocks);
     for (vector<ushort2>::const_iterator iter = exclusionTilesVec.begin(); iter != exclusionTilesVec.end(); ++iter) {
         exclusionBlocksForBlock[iter->x].push_back(iter->y);
@@ -393,26 +415,10 @@ void CudaNonbondedUtilities::rebuildExceptions() {
     // Record the exclusion data.
 
     exclusions = CudaArray::create<tileflags>(context, exclusionTilesVec.size()*CudaContext::TileSize, "exclusions");
-    tileflags allFlags = (tileflags) -1;
-    vector<tileflags> exclusionVec(exclusions->getSize(), allFlags);
-    for (int index1 = 0; index1 < (int) atomExclusions.size(); ++index1) {
-        int x = index1/CudaContext::TileSize;
-        int offset1 = index1-x*CudaContext::TileSize;
-        int atom1 = order[index1];
-        for (int j = 0; j < (int) atomExclusions[atom1].size(); ++j) {
-            int index2 = inverseOrder[atomExclusions[atom1][j]];
-            int y = index2/CudaContext::TileSize;
-            int offset2 = index2-y*CudaContext::TileSize;
-            if (x > y) {
-                int index = exclusionTileMap[make_pair(x, y)]*CudaContext::TileSize;
-                exclusionVec[index+offset1] &= allFlags-(1<<offset2);
-            }
-            else {
-                int index = exclusionTileMap[make_pair(y, x)]*CudaContext::TileSize;
-                exclusionVec[index+offset2] &= allFlags-(1<<offset1);
-            }
-        }
-    }
+    vector<tileflags> exclusionVec;
+    exclusionVec.reserve(tilesExclusionData.size()*CudaContext::TileSize);
+    for (map<ushort2,vector<tileflags> >::const_iterator iter = tilesExclusionData.begin(); iter != tilesExclusionData.end(); ++iter)
+        exclusionVec.insert(exclusionVec.end(), iter->second.begin(), iter->second.end());
     exclusions->upload(exclusionVec);
     
     // Update kernel arguments.
@@ -455,7 +461,7 @@ void CudaNonbondedUtilities::prepareInteractions(int forceGroups) {
         forceRebuildNeighborList = true;
     bool rebuild = false;
     do {
-        context.executeKernel(kernels.findBlockBoundsKernel, &findBlockBoundsArgs[0], context.getNumAtoms());
+        context.executeKernel(kernels.findBlockBoundsKernel, &findBlockBoundsArgs[0], context.getNumAtoms(), 128);
         blockSorter->sort(*sortedBlocks);
         context.executeKernel(kernels.sortBoxDataKernel, &sortBoxDataArgs[0], context.getNumAtoms());
         context.executeKernel(kernels.findInteractingBlocksKernel, &findInteractingBlocksArgs[0], context.getNumAtoms(), 256, maxExclusions*(256/32)*sizeof(int));

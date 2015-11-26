@@ -1136,18 +1136,11 @@ template <class Real, class Real4, class Mixed, class Mixed4>
 void CudaContext::reorderAtomsImpl() {
     // Find the range of positions and the number of bins along each axis.
 
-    Real4 padding = {0, 0, 0, 0};
-    vector<Real4> oldPosq(paddedNumAtoms, padding);
-    vector<Real4> oldPosqCorrection(paddedNumAtoms, padding);
-    Mixed4 paddingMixed = {0, 0, 0, 0};
-    vector<Mixed4> oldVelm(paddedNumAtoms, paddingMixed);
-    posq->download(oldPosq);
-    velm->download(oldVelm);
-    if (useMixedPrecision)
-        posqCorrection->download(oldPosqCorrection);
-    Real minx = oldPosq[0].x, maxx = oldPosq[0].x;
-    Real miny = oldPosq[0].y, maxy = oldPosq[0].y;
-    Real minz = oldPosq[0].z, maxz = oldPosq[0].z;
+    vector<Real4> atomPos;
+    posq->download(atomPos);
+    Real minx = atomPos[0].x, maxx = atomPos[0].x;
+    Real miny = atomPos[0].y, maxy = atomPos[0].y;
+    Real minz = atomPos[0].z, maxz = atomPos[0].z;
     if (nonbonded->getUsePeriodic()) {
         minx = miny = minz = 0.0;
         maxx = periodicBoxSize.x;
@@ -1156,7 +1149,7 @@ void CudaContext::reorderAtomsImpl() {
     }
     else {
         for (int i = 1; i < numAtoms; i++) {
-            const Real4& pos = oldPosq[i];
+            const Real4& pos = atomPos[i];
             minx = min(minx, pos.x);
             maxx = max(maxx, pos.x);
             miny = min(miny, pos.y);
@@ -1185,7 +1178,7 @@ void CudaContext::reorderAtomsImpl() {
         center.z = 0.0f;
         for (int i = 0; i < numAtomsInMolecule; i++) {
             int atom = atoms[i];
-            const Real4& pos = oldPosq[atom];
+            const Real4& pos = atomPos[atom];
             center.x += pos.x;
             center.y += pos.y;
             center.z += pos.z;
@@ -1216,11 +1209,11 @@ void CudaContext::reorderAtomsImpl() {
                 center = newPos;
                 for (int j = 0; j < atoms.size(); j++) {
                     int atom = atoms[j];
-                    Real4 p = oldPosq[atom];
+                    Real4 p = atomPos[atom];
                     p.x -= dx;
                     p.y -= dy;
                     p.z -= dz;
-                    oldPosq[atom] = p;
+                    atomPos[atom] = p;
                     posCellOffsets[atom].x -= xcell;
                     posCellOffsets[atom].y -= ycell;
                     posCellOffsets[atom].z -= zcell;
@@ -1247,7 +1240,7 @@ void CudaContext::reorderAtomsImpl() {
             
             for (int i = 0; i < numAtomsInMolecule; i++) {
                 int atom = atoms[i];
-                Real4 pos = oldPosq[atom];
+                Real4 pos = atomPos[atom];
                 int x = (int) ((pos.x-minx)*invBinWidth);
                 int y = (int) ((pos.y-miny)*invBinWidth);
                 int z = (int) ((pos.z-minz)*invBinWidth);
@@ -1279,6 +1272,7 @@ void CudaContext::reorderAtomsImpl() {
 
     // Update the streams.
 
+    posq->upload(atomPos);
     atomIndexDevice->upload(atomIndex);
     for (int i = 0; i < (int) reorderListeners.size(); i++)
         reorderListeners[i]->execute();

@@ -7,33 +7,35 @@
 extern "C" __global__ void findBlockBounds(int numAtoms, real4 periodicBoxSize, real4 invPeriodicBoxSize, real4 periodicBoxVecX, real4 periodicBoxVecY, real4 periodicBoxVecZ,
         const real4* __restrict__ posq, real4* __restrict__ blockCenter, real4* __restrict__ blockBoundingBox, int* __restrict__ rebuildNeighborList,
         real2* __restrict__ sortedBlocks, real4* __restrict__ reorderedPosq, const int* __restrict__ atomOrder) {
-    int index = blockIdx.x*blockDim.x+threadIdx.x;
-    int base = index*TILE_SIZE;
-    while (base < numAtoms) {
-        real4 pos = posq[atomOrder[base]];
-        reorderedPosq[base] = pos;
+    int warp = threadIdx.x/TILE_SIZE;
+    int indexInWarp = threadIdx.x-warp*TILE_SIZE;
+    int warpsPerGroup = blockDim.x/TILE_SIZE;
+    __shared__ real4 buffer[128];
+    for (int block = blockIdx.x*warpsPerGroup+warp; block < NUM_BLOCKS; block += gridDim.x*warpsPerGroup) {
+        int baseAtom = block*TILE_SIZE;
+        int atom = baseAtom+indexInWarp;
+        real4 pos = posq[atomOrder[atom]];
+        if (atom < NUM_ATOMS)
+            reorderedPosq[atom] = pos;
+        buffer[threadIdx.x] = pos;
+        if (indexInWarp == 0) {
+            real4 minPos = pos;
+            real4 maxPos = pos;
+            int last = threadIdx.x+min(TILE_SIZE, numAtoms-baseAtom);
+            for (int i = threadIdx.x+1; i < last; i++) {
+                pos = buffer[i];
 #ifdef USE_PERIODIC
-        APPLY_PERIODIC_TO_POS(pos)
+                real4 center = 0.5f*(maxPos+minPos);
+                APPLY_PERIODIC_TO_POS_WITH_CENTER(pos, center)
 #endif
-        real4 minPos = pos;
-        real4 maxPos = pos;
-        int last = min(base+TILE_SIZE, numAtoms);
-        for (int i = base+1; i < last; i++) {
-            pos = posq[atomOrder[i]];
-            reorderedPosq[i] = pos;
-#ifdef USE_PERIODIC
-            real4 center = 0.5f*(maxPos+minPos);
-            APPLY_PERIODIC_TO_POS_WITH_CENTER(pos, center)
-#endif
-            minPos = make_real4(min(minPos.x,pos.x), min(minPos.y,pos.y), min(minPos.z,pos.z), 0);
-            maxPos = make_real4(max(maxPos.x,pos.x), max(maxPos.y,pos.y), max(maxPos.z,pos.z), 0);
+                minPos = make_real4(min(minPos.x,pos.x), min(minPos.y,pos.y), min(minPos.z,pos.z), 0);
+                maxPos = make_real4(max(maxPos.x,pos.x), max(maxPos.y,pos.y), max(maxPos.z,pos.z), 0);
+            }
+            real4 blockSize = 0.5f*(maxPos-minPos);
+            blockBoundingBox[block] = blockSize;
+            blockCenter[block] = 0.5f*(maxPos+minPos);
+            sortedBlocks[block] = make_real2(blockSize.x+blockSize.y+blockSize.z, block);
         }
-        real4 blockSize = 0.5f*(maxPos-minPos);
-        blockBoundingBox[index] = blockSize;
-        blockCenter[index] = 0.5f*(maxPos+minPos);
-        sortedBlocks[index] = make_real2(blockSize.x+blockSize.y+blockSize.z, index);
-        index += blockDim.x*gridDim.x;
-        base = index*TILE_SIZE;
     }
     if (blockIdx.x == 0 && threadIdx.x == 0)
         rebuildNeighborList[0] = 0;
