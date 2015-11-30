@@ -345,19 +345,14 @@ void CudaNonbondedUtilities::rebuildExceptions() {
                     
                     diagonal[offset2] &= allFlags-(1<<offset1);
                 }
-                else {
+                else if (block1 < block2) {
                     ushort2 key = make_ushort2((unsigned short) max(block1, block2), (unsigned short) min(block1, block2));
                     map<ushort2,vector<tileflags> >::iterator tile = tilesExclusionData.find(key);
                     if (tile == tilesExclusionData.end()) {
                         tilesExclusionData[key] = vector<tileflags>(CudaContext::TileSize, allFlags);
                         tile = tilesExclusionData.find(key);;
                     }
-                    if (block1 > block2) {
-                        tile->second[offset1] &= allFlags-(1<<offset2);
-                    }
-                    else {
-                        tile->second[offset2] &= allFlags-(1<<offset1);
-                    }
+                    tile->second[offset2] &= allFlags-(1<<offset1);
                 }
             }
         }
