@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2010-2012 Stanford University and the Authors.      *
+ * Portions copyright (c) 2010-2015 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -57,15 +57,18 @@ CudaSort::CudaSort(CudaContext& context, SortTrait* trait, unsigned int length) 
     int maxSharedMem;
     cuDeviceGetAttribute(&maxSharedMem, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK, context.getDevice());
     unsigned int maxLocalBuffer = (unsigned int) ((maxSharedMem/trait->getDataSize())/2);
-    isShortList = (length <= maxLocalBuffer);
+    shortListBufferSize = 1;
+    while (shortListBufferSize < length)
+        shortListBufferSize *= 2;
+    isShortList = (shortListBufferSize <= maxLocalBuffer);
     for (rangeKernelSize = 1; rangeKernelSize*2 <= maxBlockSize; rangeKernelSize *= 2)
         ;
     positionsKernelSize = rangeKernelSize;
     sortKernelSize = (isShortList ? rangeKernelSize/2 : rangeKernelSize/4);
     if (rangeKernelSize > length)
         rangeKernelSize = length;
-    if (sortKernelSize > maxLocalBuffer)
-        sortKernelSize = maxLocalBuffer;
+    while (sortKernelSize > maxLocalBuffer)
+        sortKernelSize /= 2;
     unsigned int targetBucketSize = sortKernelSize/2;
     unsigned int numBuckets = length/targetBucketSize;
     if (numBuckets < 1)
@@ -106,15 +109,15 @@ void CudaSort::sort(CudaArray& data) {
     if (isShortList) {
         // We can use a simpler sort kernel that does the entire operation at once in local memory.
         
-        void* sortArgs[] = {&data.getDevicePointer(), &dataLength};
-        context.executeKernel(shortListKernel, sortArgs, sortKernelSize, sortKernelSize, dataLength*trait->getDataSize());
+        void* sortArgs[] = {&data.getDevicePointer(), &dataLength, &shortListBufferSize};
+        context.executeKernel(shortListKernel, sortArgs, sortKernelSize, sortKernelSize, shortListBufferSize*trait->getDataSize());
     }
     else {
         // Compute the range of data values.
 
         unsigned int numBuckets = bucketOffset->getSize();
         void* rangeArgs[] = {&data.getDevicePointer(), &dataLength, &dataRange->getDevicePointer(), &numBuckets, &bucketOffset->getDevicePointer()};
-        context.executeKernel(computeRangeKernel, rangeArgs, rangeKernelSize, rangeKernelSize, rangeKernelSize*trait->getKeySize());
+        context.executeKernel(computeRangeKernel, rangeArgs, rangeKernelSize, rangeKernelSize, 2*rangeKernelSize*trait->getKeySize());
 
         // Assign array elements to buckets.
 
