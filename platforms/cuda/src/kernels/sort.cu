@@ -75,7 +75,6 @@ __global__ void computeRange(const DATA_TYPE* __restrict__ data, unsigned int le
         }
         __syncthreads();
     }
-    __syncthreads();
     if (threadIdx.x == 0) {
         range[0] = minBuffer[0];
         range[1] = maxBuffer[0];
