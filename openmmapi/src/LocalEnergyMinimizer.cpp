@@ -33,6 +33,8 @@
 #include "openmm/OpenMMException.h"
 #include "lbfgs.h"
 #include "openmm/Platform.h"
+#include "openmm/internal/ContextImpl.h"
+#include "openmm/kernels.h"
 #include <cmath>
 #include <sstream>
 #include <vector>
@@ -102,6 +104,20 @@ static lbfgsfloatval_t evaluate(void *instance, const lbfgsfloatval_t *x, lbfgsf
 }
 
 void LocalEnergyMinimizer::minimize(Context& context, double tolerance, int maxIterations) {
+    ContextImpl& contextImpl = context.getPlatform().getContextImpl(context);
+    bool hasKernel = false;
+    Kernel kernel;
+    try {
+        kernel = contextImpl.getGlobalKernel(LocalEnergyMinimizerKernel::Name());
+        hasKernel = true;
+    }
+    catch (...) {
+        // The platform doesn't provide its own kernel, so use the default minimizer.
+    }
+    if (hasKernel) {
+        kernel.getAs<LocalEnergyMinimizerKernel>().execute(contextImpl, tolerance, maxIterations);
+        return;
+    }
     const System& system = context.getSystem();
     int numParticles = system.getNumParticles();
     lbfgsfloatval_t *x = lbfgs_malloc(numParticles*3);

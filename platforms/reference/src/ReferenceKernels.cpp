@@ -2261,3 +2261,61 @@ void ReferenceRemoveCMMotionKernel::execute(ContextImpl& context) {
         }
     }
 }
+
+void ReferenceLocalEnergyMinimizerKernel::execute(ContextImpl& context, double tolerance, int maxIterations) {
+    vector<RealVec> savedVelocities = extractVelocities(context);
+    vector<RealVec>& posData = extractPositions(context);
+    vector<RealVec>& velData = extractVelocities(context);
+    vector<RealVec>& forceData = extractForces(context);
+    int numParticles = context.getSystem().getNumParticles();
+    RealOpenMM tol = 1e-2;
+    RealOpenMM energyPrev = 1e30;
+    RealOpenMM a = 0, aPrev = 0;
+    vector<RealVec> y = posData;
+    vector<RealVec> xPrev, yPrev;
+    RealOpenMM constraintTol = context.getIntegrator().getConstraintTolerance();
+    for (int iteration = 0; ; iteration++) {
+        aPrev = a;
+        a = 0.5*(1+sqrt(1+(4*aPrev*aPrev)));
+        RealOpenMM energy = context.calcForcesAndEnergy(true, true);
+        if (energy > energyPrev || !isfinite(energy)) {
+            // The energy has increased or blown up.  That probably means we're using
+            // too large a step size, so decrease it and reject the last step.
+            
+            tol *= 0.5;
+            posData = xPrev;
+            printf("reduced to %g (%.10g %.10g)\n", tol, energy, energyPrev);
+            if (tol < 1e-40)
+                break; // Just give up.
+            a = 1;
+            continue;
+        }
+        else {
+            tol *= 1.01;
+        }
+        energyPrev = energy;
+        xPrev = posData;
+        yPrev = y;
+        velData = forceData;
+        context.applyVelocityConstraints(constraintTol);
+        
+        // See whether the forces have converged to the required tolerance.
+        
+        RealOpenMM sum = 0;
+        for (int i = 0; i < numParticles; i++)
+            sum += velData[i].dot(velData[i]);
+        double dt = sqrt(tol/sqrt(sum/(3*numParticles)));
+        std::cout << iteration<<" "<<energy<<" "<<sqrt(sum/numParticles)<<" "<<tolerance<<" "<<dt<< std::endl;
+        if (sum/numParticles < tolerance*tolerance)
+            break;
+        RealOpenMM scale = (aPrev-1)/a;
+        for (int i = 0; i < numParticles; i++) {
+            y[i] = posData[i] + velData[i]*dt;
+            posData[i] = y[i] + (y[i]-yPrev[i])*scale;
+        }
+        context.applyConstraints(constraintTol);
+        if (maxIterations != 0 && iteration >= maxIterations)
+            break;
+    }
+    velData = savedVelocities;
+}

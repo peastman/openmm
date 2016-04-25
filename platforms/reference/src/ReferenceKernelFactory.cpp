@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2008 Stanford University and the Authors.           *
+ * Portions copyright (c) 2008-2016 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -100,5 +100,7 @@ KernelImpl* ReferenceKernelFactory::createKernelImpl(std::string name, const Pla
         return new ReferenceApplyMonteCarloBarostatKernel(name, platform);
     if (name == RemoveCMMotionKernel::Name())
         return new ReferenceRemoveCMMotionKernel(name, platform, data);
+    if (name == LocalEnergyMinimizerKernel::Name())
+        return new ReferenceLocalEnergyMinimizerKernel(name, platform, data);
     throw OpenMMException((std::string("Tried to create kernel with illegal kernel name '") + name + "'").c_str());
 }

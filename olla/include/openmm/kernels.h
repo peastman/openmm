@@ -9,7 +9,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2008-2015 Stanford University and the Authors.      *
+ * Portions copyright (c) 2008-2016 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -1218,6 +1218,26 @@ public:
      * @param context    the context in which to execute this kernel
      */
     virtual void execute(ContextImpl& context) = 0;
+};
+
+/**
+ * This kernel is invoked by LocalEnergyMinimizer to perform the minimization.
+ */
+class LocalEnergyMinimizerKernel : public KernelImpl {
+public:
+    static std::string Name() {
+        return "LocalEnergyMinimizer";
+    }
+    LocalEnergyMinimizerKernel(std::string name, const Platform& platform) : KernelImpl(name, platform) {
+    }
+    /**
+     * Execute the kernel.
+     * 
+     * @param context        the context in which to execute this kernel
+     * @param tolerance      the tolerance for how close the forces must be to zero
+     * @param maxIterations  the maximum number of iterations to perform
+     */
+    virtual void execute(ContextImpl& context, double tolerance, int maxIterations) = 0;
 };
 
 /**

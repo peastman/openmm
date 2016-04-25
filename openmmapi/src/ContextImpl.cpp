@@ -178,6 +178,7 @@ ContextImpl::~ContextImpl() {
     updateStateDataKernel = Kernel();
     applyConstraintsKernel = Kernel();
     virtualSitesKernel = Kernel();
+    globalKernels.clear();
     if (!integratorIsDeleted) {
         // The Context is being deleted before the Integrator, so call cleanup() on it now.
         
@@ -450,4 +451,10 @@ void ContextImpl::loadCheckpoint(istream& stream) {
     }
     updateStateDataKernel.getAs<UpdateStateDataKernel>().loadCheckpoint(*this, stream);
     hasSetPositions = true;
+}
+
+Kernel ContextImpl::getGlobalKernel(const std::string& name) {
+    if (globalKernels.find(name) == globalKernels.end())
+        globalKernels[name] = platform->createKernel(name, *this);
+    return globalKernels[name];
 }

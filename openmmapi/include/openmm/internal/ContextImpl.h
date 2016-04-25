@@ -249,6 +249,12 @@ public:
         integratorIsDeleted = true;
     }
     /**
+     * Get a kernel by name.  This method maintains a global table of kernels that need not be associated
+     * with any particular Force or other class.  The first time a kernel is requested, it is created
+     * automatically.  Subsequent requests for the same kernel name return the existing kernel.
+     */
+    Kernel getGlobalKernel(const std::string& name);
+    /**
      * This is the routine that actually computes the list of molecules returned by getMolecules().  Normally
      * you should never call it.  It is exposed here because the same logic is useful to other classes too.
      */
@@ -265,6 +271,7 @@ private:
     int lastForceGroups;
     Platform* platform;
     Kernel initializeForcesKernel, updateStateDataKernel, applyConstraintsKernel, virtualSitesKernel;
+    std::map<std::string, Kernel> globalKernels;
     void* platformData;
 };
 

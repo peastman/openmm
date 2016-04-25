@@ -1306,6 +1306,25 @@ private:
     int frequency;
 };
 
+/**
+ * This kernel is invoked by LocalEnergyMinimizer to perform the minimization.
+ */
+class ReferenceLocalEnergyMinimizerKernel : public LocalEnergyMinimizerKernel {
+public:
+    ReferenceLocalEnergyMinimizerKernel(std::string name, const Platform& platform, ReferencePlatform::PlatformData& data) : LocalEnergyMinimizerKernel(name, platform), data(data) {
+    }
+    /**
+     * Execute the kernel.
+     * 
+     * @param context    the context in which to execute this kernel
+     * @param tolerance      the tolerance for how close the forces must be to zero
+     * @param maxIterations  the maximum number of iterations to perform
+     */
+    void execute(ContextImpl& context, double tolerance, int maxIterations);
+private:
+    ReferencePlatform::PlatformData& data;
+};
+
 } // namespace OpenMM
 
 #endif /*OPENMM_REFERENCEKERNELS_H_*/
