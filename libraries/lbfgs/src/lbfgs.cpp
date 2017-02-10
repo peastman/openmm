@@ -76,6 +76,9 @@ licence.
 typedef unsigned int uint32_t;
 #endif/*_MSC_VER*/
 
+#define USE_SSE
+#define HAVE_EMMINTRIN_H 1
+
 #if     defined(USE_SSE) && defined(__SSE2__) && LBFGS_FLOAT == 64
 /* Use SSE2 optimization for 64bit double precision. */
 #include "arithmetic_sse_double.h"
@@ -290,7 +293,7 @@ int lbfgs(
     if (n % 8 != 0) {
         return LBFGSERR_INVALID_N_SSE;
     }
-    if (((unsigned short)x & 0x000F) != 0) {
+    if (((unsigned long long)x & 0x000F) != 0) {
         return LBFGSERR_INVALID_X_SSE;
     }
 #endif/*defined(USE_SSE)*/

@@ -26,7 +26,6 @@
 /* $Id: arithmetic_sse_float.h 65 2010-01-29 12:19:16Z naoaki $ */
 
 #include <stdlib.h>
-#include <malloc.h>
 #include <memory.h>
 
 #if     1400 <= _MSC_VER
@@ -45,8 +44,9 @@
 
 inline static void* vecalloc(size_t size)
 {
-    void *memblock = _aligned_malloc(size, 16);
-    if (memblock != NULL) {
+    void *memblock;
+    int result = posix_memalign(&memblock, 16, size);
+    if (result == 0) {
         memset(memblock, 0, size);
     }
     return memblock;
@@ -54,7 +54,7 @@ inline static void* vecalloc(size_t size)
 
 inline static void vecfree(void *memblock)
 {
-    _aligned_free(memblock);
+    free(memblock);
 }
 
 #define vecset(x, c, n) \
