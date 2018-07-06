@@ -1213,11 +1213,12 @@ public:
     /**
      * Initialize the kernel.
      *
-     * @param system     the System this kernel will be applied to
-     * @param force      the CustomCVForce this kernel will be used for
+     * @param system         the System this kernel will be applied to
+     * @param force          the CustomCVForce this kernel will be used for
+     * @param context        the main Context this kernel belongs to
      * @param innerContext   the context created by the CustomCVForce for computing collective variables
      */
-    void initialize(const System& system, const CustomCVForce& force, ContextImpl& innerContext);
+    void initialize(const System& system, const CustomCVForce& force, ContextImpl& context, ContextImpl& innerContext);
     /**
      * Execute the kernel to calculate the forces and/or energy.
      *
@@ -1235,18 +1236,37 @@ public:
      * @param innerContext   the context created by the CustomCVForce for computing collective variables
      */
     void copyState(ContextImpl& context, ContextImpl& innerContext);
+    /**
+     * The is called by the pre-computation to start the calculation running.
+     */
+    void beginComputation(ContextImpl& context, ContextImpl& innerContext, bool includeForces, bool includeEnergy, int groups);
+    /**
+     * This is called by the worker thread to do the computation.
+     */
+    void executeOnWorkerThread(ContextImpl& context, ContextImpl& innerContext);
+    /**
+     * This is called by the post-computation to add the forces to the main array.
+     */
+    double addForces(ContextImpl& context, ContextImpl& innerContext, bool includeForces, bool includeEnergy, int groups);
 private:
     class ReorderListener;
+    class ExecuteTask;
+    class StartCalculationPreComputation;
+    class AddForcesPostComputation;
     OpenCLContext& cl;
     bool hasInitializedKernels;
+    int forceGroupFlag;
     Lepton::ExpressionProgram energyExpression;
     std::vector<std::string> variableNames, paramDerivNames, globalParameterNames;
     std::vector<Lepton::ExpressionProgram> variableDerivExpressions;
     std::vector<Lepton::ExpressionProgram> paramDerivExpressions;
     std::vector<OpenCLArray> cvForces;
+    std::vector<double> cvValues;
+    std::vector<std::map<std::string, double> > cvDerivs;
     OpenCLArray invAtomOrder;
     OpenCLArray innerInvAtomOrder;
     cl::Kernel copyStateKernel, copyForcesKernel, addForcesKernel;
+    cl::Event syncEvent;
 };
 
 /**

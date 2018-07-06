@@ -6858,7 +6858,46 @@ private:
     OpenCLArray& invAtomOrder;
 };
 
-void OpenCLCalcCustomCVForceKernel::initialize(const System& system, const CustomCVForce& force, ContextImpl& innerContext) {
+class OpenCLCalcCustomCVForceKernel::StartCalculationPreComputation : public OpenCLContext::ForcePreComputation {
+public:
+    StartCalculationPreComputation(OpenCLCalcCustomCVForceKernel& owner, ContextImpl& context, ContextImpl& innerContext) :
+            owner(owner), context(context), innerContext(innerContext) {
+    }
+    void computeForceAndEnergy(bool includeForces, bool includeEnergy, int groups) {
+        owner.beginComputation(context, innerContext, includeForces, includeEnergy, groups);
+    }
+    OpenCLCalcCustomCVForceKernel& owner;
+    ContextImpl& context;
+    ContextImpl& innerContext;
+};
+
+class OpenCLCalcCustomCVForceKernel::ExecuteTask : public OpenCLContext::WorkTask {
+public:
+    ExecuteTask(OpenCLCalcCustomCVForceKernel& owner, ContextImpl& context, ContextImpl& innerContext) :
+            owner(owner), context(context), innerContext(innerContext) {
+    }
+    void execute() {
+        owner.executeOnWorkerThread(context, innerContext);
+    }
+    OpenCLCalcCustomCVForceKernel& owner;
+    ContextImpl& context;
+    ContextImpl& innerContext;
+};
+
+class OpenCLCalcCustomCVForceKernel::AddForcesPostComputation : public OpenCLContext::ForcePostComputation {
+public:
+    AddForcesPostComputation(OpenCLCalcCustomCVForceKernel& owner, ContextImpl& context, ContextImpl& innerContext) :
+            owner(owner), context(context), innerContext(innerContext) {
+    }
+    double computeForceAndEnergy(bool includeForces, bool includeEnergy, int groups) {
+        return owner.addForces(context, innerContext, includeForces, includeEnergy, groups);
+    }
+    OpenCLCalcCustomCVForceKernel& owner;
+    ContextImpl& context;
+    ContextImpl& innerContext;
+};
+
+void OpenCLCalcCustomCVForceKernel::initialize(const System& system, const CustomCVForce& force, ContextImpl& context, ContextImpl& innerContext) {
     int numCVs = force.getNumCollectiveVariables();
     cl.addForce(new OpenCLForceInfo(1));
     for (int i = 0; i < force.getNumGlobalParameters(); i++)
@@ -6920,50 +6959,19 @@ void OpenCLCalcCustomCVForceKernel::initialize(const System& system, const Custo
     copyStateKernel = cl::Kernel(program, "copyState");
     copyForcesKernel = cl::Kernel(program, "copyForces");
     addForcesKernel = cl::Kernel(program, "addForces");
+
+    // Register the pre and post computations.
+
+    cl.addPreComputation(new StartCalculationPreComputation(*this, context, innerContext));
+    cl.addPostComputation(new AddForcesPostComputation(*this, context, innerContext));
+    forceGroupFlag = (1<<force.getForceGroup());
 }
 
 double OpenCLCalcCustomCVForceKernel::execute(ContextImpl& context, ContextImpl& innerContext, bool includeForces, bool includeEnergy) {
-    copyState(context, innerContext);
-    int numCVs = variableNames.size();
-    int numAtoms = cl.getNumAtoms();
-    OpenCLContext& cl2 = *reinterpret_cast<OpenCLPlatform::PlatformData*>(innerContext.getPlatformData())->contexts[0];
-    vector<double> cvValues;
-    vector<map<string, double> > cvDerivs(numCVs);
-    for (int i = 0; i < numCVs; i++) {
-        cvValues.push_back(innerContext.calcForcesAndEnergy(true, true, 1<<i));
-        copyForcesKernel.setArg<cl::Buffer>(0, cvForces[i].getDeviceBuffer());
-        cl.executeKernel(copyForcesKernel, numAtoms);
-        innerContext.getEnergyParameterDerivatives(cvDerivs[i]);
-    }
+    // This method does nothing.  The actual calculation is started by the pre-computation, continued on
+    // the worker thread, and finished by the post-computation.
     
-    // Compute the energy and forces.
-    
-    map<string, double> variables;
-    for (auto& name : globalParameterNames)
-        variables[name] = context.getParameter(name);
-    for (int i = 0; i < numCVs; i++)
-        variables[variableNames[i]] = cvValues[i];
-    double energy = energyExpression.evaluate(variables);
-    for (int i = 0; i < numCVs; i++) {
-        double dEdV = variableDerivExpressions[i].evaluate(variables);
-        if (cl.getUseDoublePrecision())
-            addForcesKernel.setArg<cl_double>(2*i+3, dEdV);
-        else
-            addForcesKernel.setArg<cl_float>(2*i+3, dEdV);
-    }
-    cl.executeKernel(addForcesKernel, numAtoms);
-    
-    // Compute the energy parameter derivatives.
-    
-    map<string, double>& energyParamDerivs = cl.getEnergyParamDerivWorkspace();
-    for (int i = 0; i < paramDerivExpressions.size(); i++)
-        energyParamDerivs[paramDerivNames[i]] += paramDerivExpressions[i].evaluate(variables);
-    for (int i = 0; i < numCVs; i++) {
-        double dEdV = variableDerivExpressions[i].evaluate(variables);
-        for (auto& deriv : cvDerivs[i])
-            energyParamDerivs[deriv.first] += dEdV*deriv.second;
-    }
-    return energy;
+    return 0;
 }
 
 void OpenCLCalcCustomCVForceKernel::copyState(ContextImpl& context, ContextImpl& innerContext) {
@@ -7017,6 +7025,74 @@ void OpenCLCalcCustomCVForceKernel::copyState(ContextImpl& context, ContextImpl&
     map<string, double> innerParameters = innerContext.getParameters();
     for (auto& param : innerParameters)
         innerContext.setParameter(param.first, context.getParameter(param.first));
+}
+
+void OpenCLCalcCustomCVForceKernel::beginComputation(ContextImpl& context, ContextImpl& innerContext, bool includeForces, bool includeEnergy, int groups) {
+    if ((groups&forceGroupFlag) == 0)
+        return;
+    copyState(context, innerContext);
+    
+    // The actual force computation will be done on a different thread.
+    
+    cl.getWorkThread().addTask(new ExecuteTask(*this, context, innerContext));
+}
+
+void OpenCLCalcCustomCVForceKernel::executeOnWorkerThread(ContextImpl& context, ContextImpl& innerContext) {
+    int numCVs = variableNames.size();
+    cvValues.clear();
+    cvDerivs.resize(numCVs);
+    for (int i = 0; i < numCVs; i++) {
+        cvValues.push_back(innerContext.calcForcesAndEnergy(true, true, 1<<i));
+        copyForcesKernel.setArg<cl::Buffer>(0, cvForces[i].getDeviceBuffer());
+        cl.executeKernel(copyForcesKernel, cl.getNumAtoms());
+        innerContext.getEnergyParameterDerivatives(cvDerivs[i]);
+    }
+    OpenCLContext& cl2 = *reinterpret_cast<OpenCLPlatform::PlatformData*>(innerContext.getPlatformData())->contexts[0];
+    cl2.getQueue().enqueueMarker(&syncEvent);
+}
+
+double OpenCLCalcCustomCVForceKernel::addForces(ContextImpl& context, ContextImpl& innerContext, bool includeForces, bool includeEnergy, int groups) {
+    if ((groups&forceGroupFlag) == 0)
+        return 0.0;
+
+    // Wait until executeOnWorkerThread() is finished.
+    
+    cl.getWorkThread().flush();
+    vector<cl::Event> events(1);
+    events[0] = syncEvent;
+    syncEvent = cl::Event();
+    OpenCLContext& cl2 = *reinterpret_cast<OpenCLPlatform::PlatformData*>(innerContext.getPlatformData())->contexts[0];
+    cl2.getQueue().enqueueWaitForEvents(events);
+
+    // Compute the energy and forces.
+    
+    int numCVs = variableNames.size();
+    map<string, double> variables;
+    for (auto& name : globalParameterNames)
+        variables[name] = context.getParameter(name);
+    for (int i = 0; i < numCVs; i++)
+        variables[variableNames[i]] = cvValues[i];
+    double energy = energyExpression.evaluate(variables);
+    for (int i = 0; i < numCVs; i++) {
+        double dEdV = variableDerivExpressions[i].evaluate(variables);
+        if (cl.getUseDoublePrecision())
+            addForcesKernel.setArg<cl_double>(2*i+3, dEdV);
+        else
+            addForcesKernel.setArg<cl_float>(2*i+3, dEdV);
+    }
+    cl.executeKernel(addForcesKernel, cl.getNumAtoms());
+    
+    // Compute the energy parameter derivatives.
+    
+    map<string, double>& energyParamDerivs = cl.getEnergyParamDerivWorkspace();
+    for (int i = 0; i < paramDerivExpressions.size(); i++)
+        energyParamDerivs[paramDerivNames[i]] += paramDerivExpressions[i].evaluate(variables);
+    for (int i = 0; i < numCVs; i++) {
+        double dEdV = variableDerivExpressions[i].evaluate(variables);
+        for (auto& deriv : cvDerivs[i])
+            energyParamDerivs[deriv.first] += dEdV*deriv.second;
+    }
+    return energy;
 }
 
 class OpenCLCalcRMSDForceKernel::ForceInfo : public OpenCLForceInfo {

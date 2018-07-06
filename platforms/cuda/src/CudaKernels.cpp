@@ -6584,7 +6584,7 @@ private:
     CudaArray& invAtomOrder;
 };
 
-void CudaCalcCustomCVForceKernel::initialize(const System& system, const CustomCVForce& force, ContextImpl& innerContext) {
+void CudaCalcCustomCVForceKernel::initialize(const System& system, const CustomCVForce& force, ContextImpl& context, ContextImpl& innerContext) {
     int numCVs = force.getNumCollectiveVariables();
     for (int i = 0; i < force.getNumGlobalParameters(); i++)
         globalParameterNames.push_back(force.getGlobalParameterName(i));

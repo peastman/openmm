@@ -76,7 +76,7 @@ void CustomCVForceImpl::initialize(ContextImpl& context) {
     // Create the kernel.
     
     kernel = context.getPlatform().createKernel(CalcCustomCVForceKernel::Name(), context);
-    kernel.getAs<CalcCustomCVForceKernel>().initialize(context.getSystem(), owner, getContextImpl(*innerContext));
+    kernel.getAs<CalcCustomCVForceKernel>().initialize(context.getSystem(), owner, context, getContextImpl(*innerContext));
 }
 
 double CustomCVForceImpl::calcForcesAndEnergy(ContextImpl& context, bool includeForces, bool includeEnergy, int groups) {
