@@ -31,6 +31,8 @@
 
 #ifdef WIN32
   #define _USE_MATH_DEFINES // Needed to get M_PI
+  // Prevent Windows from defining macros that interfere with other code.
+  #define NOMINMAX
 #endif
 #include "openmm/internal/AssertionUtilities.h"
 #include "openmm/Context.h"
