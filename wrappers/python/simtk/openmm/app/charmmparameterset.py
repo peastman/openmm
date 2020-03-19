@@ -253,13 +253,13 @@ class CharmmParameterSet(object):
             if line.startswith('BOND'):
                 section = 'BONDS'
                 continue
-            if line.startswith('ANGL') or line.startswith('THETA'):
+            if line.startswith('ANGL') or line.startswith('THET'):
                 section = 'ANGLES'
                 continue
             if line.startswith('DIHE') or line.startswith('PHI'):
                 section = 'DIHEDRALS'
                 continue
-            if line.startswith('IMPR') or line.startswith('IMPHI'):
+            if line.startswith('IMPR') or line.startswith('IMPH'):
                 section = 'IMPROPER'
                 continue
             if line.startswith('CMAP'):
@@ -275,13 +275,13 @@ class CharmmParameterSet(object):
                         raise CharmmFileError('Unsupported value for NBXMOD: %d' % nbxmod)
                     self.nbxmod = nbxmod
                 continue
-            if line.startswith('NBFIX'):
+            if line.startswith('NBFI'):
                 section = 'NBFIX'
                 continue
-            if line.startswith('THOLE'):
+            if line.startswith('THOL'):
                 section = 'NBTHOLE'
                 continue
-            if line.startswith('HBOND'):
+            if line.startswith('HBON'):
                 section = None
                 continue
             # It seems like files? sections? can be terminated with 'END'
