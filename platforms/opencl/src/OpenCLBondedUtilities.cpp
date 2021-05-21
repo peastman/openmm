@@ -50,14 +50,10 @@ void OpenCLBondedUtilities::addInteraction(const vector<vector<int> >& atoms, co
     }
 }
 
-string OpenCLBondedUtilities::addArgument(cl::Memory& data, const string& type) {
+string OpenCLBondedUtilities::addArgument(ArrayInterface& data, const string& type) {
     arguments.push_back(&data);
     argTypes.push_back(type);
     return "customArg"+context.intToString(arguments.size());
-}
-
-string OpenCLBondedUtilities::addArgument(ArrayInterface& data, const string& type) {
-    return addArgument(context.unwrap(data).getDeviceBuffer(), type);
 }
 
 string OpenCLBondedUtilities::addEnergyParameterDerivative(const string& param) {
@@ -219,8 +215,7 @@ void OpenCLBondedUtilities::initialize(const System& system) {
         s<<"}\n";
         map<string, string> defines;
         defines["PADDED_NUM_ATOMS"] = context.intToString(context.getPaddedNumAtoms());
-        cl::Program program = context.createProgram(s.str(), defines);
-        kernels.push_back(cl::Kernel(program, "computeBondedForces"));
+        compiledPrograms.push_back(context.compileProgramAsync(s.str(), defines));
     }
     forceAtoms.clear();
     forceSource.clear();
@@ -278,42 +273,44 @@ void OpenCLBondedUtilities::computeInteractions(int groups) {
     if (!hasInitializedKernels) {
         hasInitializedKernels = true;
         for (int i = 0; i < (int) forceSets.size(); i++) {
-            int index = 0;
-            cl::Kernel& kernel = kernels[i];
+            ComputeProgram program = compiledPrograms[i].get();
+            ComputeKernel kernel = program->createKernel("computeBondedForces");
+            kernels.push_back(kernel);
             if (context.getSupports64BitGlobalAtomics())
-                kernel.setArg<cl::Buffer>(index++, context.getLongForceBuffer().getDeviceBuffer());
+                kernel->addArg(context.getLongForceBuffer());
             else
-                kernel.setArg<cl::Buffer>(index++, context.getForceBuffers().getDeviceBuffer());
-            kernel.setArg<cl::Buffer>(index++, context.getEnergyBuffer().getDeviceBuffer());
-            kernel.setArg<cl::Buffer>(index++, context.getPosq().getDeviceBuffer());
-            index += 6;
+                kernel->addArg(context.getForceBuffers());
+            kernel->addArg(context.getEnergyBuffer());
+            kernel->addArg(context.getPosq());
+            for (int j = 0; j < 6; j++)
+                kernel->addArg();
             for (int j = 0; j < (int) forceSets[i].size(); j++) {
-                kernel.setArg<cl::Buffer>(index++, atomIndices[forceSets[i][j]].getDeviceBuffer());
-                kernel.setArg<cl::Buffer>(index++, bufferIndices[forceSets[i][j]].getDeviceBuffer());
+                kernel->addArg(atomIndices[forceSets[i][j]]);
+                kernel->addArg(bufferIndices[forceSets[i][j]]);
             }
             for (int j = 0; j < (int) arguments.size(); j++)
-                kernel.setArg<cl::Memory>(index++, *arguments[j]);
+                kernel->addArg(*arguments[j]);
             if (energyParameterDerivatives.size() > 0)
-                kernel.setArg<cl::Memory>(index++, context.getEnergyParamDerivBuffer().getDeviceBuffer());
+                kernel->addArg(context.getEnergyParamDerivBuffer());
         }
     }
     for (int i = 0; i < (int) kernels.size(); i++) {
-        cl::Kernel& kernel = kernels[i];
-        kernel.setArg<cl_int>(3, groups);
+        ComputeKernel& kernel = kernels[i];
+        kernel->setArg(3, groups);
         if (context.getUseDoublePrecision()) {
-            kernel.setArg<mm_double4>(4, context.getPeriodicBoxSizeDouble());
-            kernel.setArg<mm_double4>(5, context.getInvPeriodicBoxSizeDouble());
-            kernel.setArg<mm_double4>(6, context.getPeriodicBoxVecXDouble());
-            kernel.setArg<mm_double4>(7, context.getPeriodicBoxVecYDouble());
-            kernel.setArg<mm_double4>(8, context.getPeriodicBoxVecZDouble());
+            kernel->setArg(4, context.getPeriodicBoxSizeDouble());
+            kernel->setArg(5, context.getInvPeriodicBoxSizeDouble());
+            kernel->setArg(6, context.getPeriodicBoxVecXDouble());
+            kernel->setArg(7, context.getPeriodicBoxVecYDouble());
+            kernel->setArg(8, context.getPeriodicBoxVecZDouble());
         }
         else {
-            kernel.setArg<mm_float4>(4, context.getPeriodicBoxSize());
-            kernel.setArg<mm_float4>(5, context.getInvPeriodicBoxSize());
-            kernel.setArg<mm_float4>(6, context.getPeriodicBoxVecX());
-            kernel.setArg<mm_float4>(7, context.getPeriodicBoxVecY());
-            kernel.setArg<mm_float4>(8, context.getPeriodicBoxVecZ());
+            kernel->setArg(4, context.getPeriodicBoxSize());
+            kernel->setArg(5, context.getInvPeriodicBoxSize());
+            kernel->setArg(6, context.getPeriodicBoxVecX());
+            kernel->setArg(7, context.getPeriodicBoxVecY());
+            kernel->setArg(8, context.getPeriodicBoxVecZ());
         }
-        context.executeKernel(kernels[i], maxBonds);
+        kernel->execute(maxBonds);
     }
 }

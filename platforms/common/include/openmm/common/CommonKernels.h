@@ -981,6 +981,7 @@ public:
 private:
     ComputeContext& cc;
     bool hasInitializedKernels;
+    std::future<ComputeProgram> compiledProgram;
     ComputeKernel kernel1, kernel2;
 };
 
@@ -1018,6 +1019,7 @@ private:
     double prevTemp, prevFriction, prevStepSize;
     bool hasInitializedKernels;
     ComputeArray params;
+    std::future<ComputeProgram> compiledProgram;
     ComputeKernel kernel1, kernel2;
 };
 
@@ -1055,6 +1057,7 @@ private:
     double prevTemp, prevFriction, prevStepSize;
     bool hasInitializedKernels;
     ComputeArray params, oldDelta;
+    std::future<ComputeProgram> compiledProgram;
     ComputeKernel kernel1, kernel2, kernel3;
 };
 
@@ -1205,6 +1208,7 @@ private:
     ComputeContext& cc;
     double prevTemp, prevFriction, prevStepSize;
     bool hasInitializedKernels;
+    std::future<ComputeProgram> compiledProgram;
     ComputeKernel kernel1, kernel2;
 };
 
@@ -1243,6 +1247,7 @@ private:
     ComputeContext& cc;
     bool hasInitializedKernels;
     int blockSize;
+    std::future<ComputeProgram> compiledProgram;
     ComputeKernel kernel1, kernel2, selectSizeKernel;
 };
 
@@ -1282,6 +1287,7 @@ private:
     bool hasInitializedKernels;
     int blockSize;
     ComputeArray params;
+    std::future<ComputeProgram> compiledProgram;
     ComputeKernel kernel1, kernel2, selectSizeKernel;
     double prevTemp, prevFriction, prevErrorTol;
 };

@@ -220,6 +220,15 @@ public:
      */
     ComputeProgram compileProgram(const std::string source, const std::map<std::string, std::string>& defines=std::map<std::string, std::string>());
     /**
+     * Compile source code to create a ComputeProgram.  This is identical to compileProgram()
+     * except that the compilation is done asynchronously on a separate thread.  On some platforms,
+     * this can allow multiple kernels to be compiled in parallel.
+     *
+     * @param source             the source code of the program
+     * @param defines            a set of preprocessor definitions (name, value) to define when compiling the program
+     */
+    std::future<ComputeProgram> compileProgramAsync(const std::string source, const std::map<std::string, std::string>& defines=std::map<std::string, std::string>());
+    /**
      * Convert an array to an OpenCLArray.  If the argument is already an OpenCLArray, this simply casts it.
      * If the argument is a ComputeArray that wraps an OpenCLArray, this returns the wrapped array.  For any
      * other argument, this throws an exception.
@@ -310,7 +319,7 @@ public:
      * @param optimizationFlags  the optimization flags to pass to the OpenCL compiler.  If this is
      *                           omitted, a default set of options will be used
      */
-    cl::Program createProgram(const std::string source, const char* optimizationFlags = NULL);
+    cl::Program createProgram(const std::string source, const char* optimizationFlags = NULL) const;
     /**
      * Create an OpenCL Program from source code.
      *
@@ -319,7 +328,7 @@ public:
      * @param optimizationFlags  the optimization flags to pass to the OpenCL compiler.  If this is
      *                           omitted, a default set of options will be used
      */
-    cl::Program createProgram(const std::string source, const std::map<std::string, std::string>& defines, const char* optimizationFlags = NULL);
+    cl::Program createProgram(const std::string source, const std::map<std::string, std::string>& defines, const char* optimizationFlags = NULL) const;
     /**
      * Execute a kernel.
      *

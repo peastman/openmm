@@ -30,6 +30,8 @@
 #include "OpenCLArray.h"
 #include "openmm/System.h"
 #include "openmm/common/BondedUtilities.h"
+#include "openmm/common/ComputeProgram.h"
+#include <future>
 #include <string>
 #include <vector>
 
@@ -95,15 +97,6 @@ public:
     /**
      * Add an argument that should be passed to the interaction kernel.
      * 
-     * @param data    the device memory containing the data to pass
-     * @param type    the data type contained in the memory (e.g. "float4")
-     * @return the name that will be used for the argument.  Any code you pass to addInteraction() should
-     * refer to it by this name.
-     */
-    std::string addArgument(cl::Memory& data, const std::string& type);
-    /**
-     * Add an argument that should be passed to the interaction kernel.
-     * 
      * @param data    the array containing the data to pass
      * @param type    the data type contained in the memory (e.g. "float4")
      * @return the name that will be used for the argument.  Any code you pass to addInteraction() should
@@ -145,13 +138,14 @@ public:
 private:
     std::string createForceSource(int forceIndex, int numBonds, int numAtoms, int group, const std::string& computeForce);
     OpenCLContext& context;
-    std::vector<cl::Kernel> kernels;
+    std::vector<std::future<ComputeProgram> > compiledPrograms;
+    std::vector<ComputeKernel> kernels;
     std::vector<std::vector<std::vector<int> > > forceAtoms;
     std::vector<int> indexWidth;
     std::vector<std::string> forceSource;
     std::vector<int> forceGroup;
     std::vector<std::vector<int> > forceSets;
-    std::vector<cl::Memory*> arguments;
+    std::vector<ArrayInterface*> arguments;
     std::vector<std::string> argTypes;
     std::vector<OpenCLArray> atomIndices;
     std::vector<OpenCLArray> bufferIndices;

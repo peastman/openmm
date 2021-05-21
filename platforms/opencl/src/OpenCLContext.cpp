@@ -47,6 +47,7 @@
 #include <iostream>
 #include <set>
 #include <sstream>
+#include <thread>
 #include <typeinfo>
 
 using namespace OpenMM;
@@ -564,11 +565,11 @@ void OpenCLContext::requestForceBuffers(int minBuffers) {
     numForceBuffers = std::max(numForceBuffers, minBuffers);
 }
 
-cl::Program OpenCLContext::createProgram(const string source, const char* optimizationFlags) {
+cl::Program OpenCLContext::createProgram(const string source, const char* optimizationFlags) const {
     return createProgram(source, map<string, string>(), optimizationFlags);
 }
 
-cl::Program OpenCLContext::createProgram(const string source, const map<string, string>& defines, const char* optimizationFlags) {
+cl::Program OpenCLContext::createProgram(const string source, const map<string, string>& defines, const char* optimizationFlags) const {
     string options = (optimizationFlags == NULL ? defaultOptimizationOptions : string(optimizationFlags));
     stringstream src;
     if (!options.empty())
@@ -653,6 +654,13 @@ ComputeEvent OpenCLContext::createEvent() {
 ComputeProgram OpenCLContext::compileProgram(const std::string source, const std::map<std::string, std::string>& defines) {
     cl::Program program = createProgram(source, defines);
     return shared_ptr<ComputeProgramImpl>(new OpenCLProgram(*this, program));
+}
+
+future<ComputeProgram> OpenCLContext::compileProgramAsync(const std::string source, const std::map<std::string, std::string>& defines) {
+    return async(launch::async, [&, source, defines]() {
+        cl::Program program = createProgram(source, defines);
+        return shared_ptr<ComputeProgramImpl>(new OpenCLProgram(*this, program));
+    });
 }
 
 OpenCLArray& OpenCLContext::unwrap(ArrayInterface& array) const {

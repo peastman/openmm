@@ -40,6 +40,7 @@
 #include "openmm/common/IntegrationUtilities.h"
 #include "openmm/common/NonbondedUtilities.h"
 #include "openmm/Vec3.h"
+#include <future>
 #include <pthread.h>
 #include <map>
 #include <queue>
@@ -122,6 +123,15 @@ public:
      * @param defines            a set of preprocessor definitions (name, value) to define when compiling the program
      */
     virtual ComputeProgram compileProgram(const std::string source, const std::map<std::string, std::string>& defines=std::map<std::string, std::string>()) = 0;
+    /**
+     * Compile source code to create a ComputeProgram.  This is identical to compileProgram()
+     * except that the compilation is done asynchronously on a separate thread.  On some platforms,
+     * this can allow multiple kernels to be compiled in parallel.
+     *
+     * @param source             the source code of the program
+     * @param defines            a set of preprocessor definitions (name, value) to define when compiling the program
+     */
+    virtual std::future<ComputeProgram> compileProgramAsync(const std::string source, const std::map<std::string, std::string>& defines=std::map<std::string, std::string>()) = 0;
     /**
      * Set all elements of an array to 0.
      */

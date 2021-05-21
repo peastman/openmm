@@ -5258,9 +5258,7 @@ void CommonCalcCustomCVForceKernel::copyParametersToContext(ContextImpl& context
 void CommonIntegrateVerletStepKernel::initialize(const System& system, const VerletIntegrator& integrator) {
     cc.initializeContexts();
     cc.setAsCurrent();
-    ComputeProgram program = cc.compileProgram(CommonKernelSources::verlet);
-    kernel1 = program->createKernel("integrateVerletPart1");
-    kernel2 = program->createKernel("integrateVerletPart2");
+    compiledProgram = cc.compileProgramAsync(CommonKernelSources::verlet);
 }
 
 void CommonIntegrateVerletStepKernel::execute(ContextImpl& context, const VerletIntegrator& integrator) {
@@ -5271,6 +5269,9 @@ void CommonIntegrateVerletStepKernel::execute(ContextImpl& context, const Verlet
     double dt = integrator.getStepSize();
     if (!hasInitializedKernels) {
         hasInitializedKernels = true;
+        ComputeProgram program = compiledProgram.get();
+        kernel1 = program->createKernel("integrateVerletPart1");
+        kernel2 = program->createKernel("integrateVerletPart2");
         kernel1->addArg(numAtoms);
         kernel1->addArg(paddedNumAtoms);
         kernel1->addArg(integration.getStepSize());
@@ -5324,9 +5325,7 @@ void CommonIntegrateLangevinStepKernel::initialize(const System& system, const L
     cc.initializeContexts();
     cc.setAsCurrent();
     cc.getIntegrationUtilities().initRandomNumberGenerator(integrator.getRandomNumberSeed());
-    ComputeProgram program = cc.compileProgram(CommonKernelSources::langevin);
-    kernel1 = program->createKernel("integrateLangevinPart1");
-    kernel2 = program->createKernel("integrateLangevinPart2");
+    compiledProgram = cc.compileProgramAsync(CommonKernelSources::langevin);
     params.initialize(cc, 3, cc.getUseDoublePrecision() || cc.getUseMixedPrecision() ? sizeof(double) : sizeof(float), "langevinParams");
     prevStepSize = -1.0;
 }
@@ -5338,6 +5337,9 @@ void CommonIntegrateLangevinStepKernel::execute(ContextImpl& context, const Lang
     int paddedNumAtoms = cc.getPaddedNumAtoms();
     if (!hasInitializedKernels) {
         hasInitializedKernels = true;
+        ComputeProgram program = compiledProgram.get();
+        kernel1 = program->createKernel("integrateLangevinPart1");
+        kernel2 = program->createKernel("integrateLangevinPart2");
         kernel1->addArg(numAtoms);
         kernel1->addArg(paddedNumAtoms);
         kernel1->addArg(cc.getVelm());
@@ -5411,10 +5413,7 @@ void CommonIntegrateLangevinMiddleStepKernel::initialize(const System& system, c
     cc.initializeContexts();
     cc.setAsCurrent();
     cc.getIntegrationUtilities().initRandomNumberGenerator(integrator.getRandomNumberSeed());
-    ComputeProgram program = cc.compileProgram(CommonKernelSources::langevinMiddle);
-    kernel1 = program->createKernel("integrateLangevinMiddlePart1");
-    kernel2 = program->createKernel("integrateLangevinMiddlePart2");
-    kernel3 = program->createKernel("integrateLangevinMiddlePart3");
+    compiledProgram = cc.compileProgramAsync(CommonKernelSources::langevinMiddle);
     if (cc.getUseDoublePrecision() || cc.getUseMixedPrecision()) {
         params.initialize<double>(cc, 2, "langevinMiddleParams");
         oldDelta.initialize<mm_double4>(cc, cc.getPaddedNumAtoms(), "oldDelta");
@@ -5432,6 +5431,10 @@ void CommonIntegrateLangevinMiddleStepKernel::execute(ContextImpl& context, cons
     int paddedNumAtoms = cc.getPaddedNumAtoms();
     if (!hasInitializedKernels) {
         hasInitializedKernels = true;
+        ComputeProgram program = compiledProgram.get();
+        kernel1 = program->createKernel("integrateLangevinMiddlePart1");
+        kernel2 = program->createKernel("integrateLangevinMiddlePart2");
+        kernel3 = program->createKernel("integrateLangevinMiddlePart3");
         kernel1->addArg(numAtoms);
         kernel1->addArg(paddedNumAtoms);
         kernel1->addArg(cc.getVelm());
@@ -6171,9 +6174,7 @@ void CommonIntegrateBrownianStepKernel::initialize(const System& system, const B
     cc.initializeContexts();
     cc.setAsCurrent();
     cc.getIntegrationUtilities().initRandomNumberGenerator(integrator.getRandomNumberSeed());
-    ComputeProgram program = cc.compileProgram(CommonKernelSources::brownian);
-    kernel1 = program->createKernel("integrateBrownianPart1");
-    kernel2 = program->createKernel("integrateBrownianPart2");
+    compiledProgram = cc.compileProgramAsync(CommonKernelSources::brownian);
     prevStepSize = -1.0;
 }
 
@@ -6184,6 +6185,9 @@ void CommonIntegrateBrownianStepKernel::execute(ContextImpl& context, const Brow
     int paddedNumAtoms = cc.getPaddedNumAtoms();
     if (!hasInitializedKernels) {
         hasInitializedKernels = true;
+        ComputeProgram program = compiledProgram.get();
+        kernel1 = program->createKernel("integrateBrownianPart1");
+        kernel2 = program->createKernel("integrateBrownianPart2");
         kernel1->addArg(numAtoms);
         kernel1->addArg(paddedNumAtoms);
         kernel1->addArg(); // tauDeltaT
@@ -6255,10 +6259,7 @@ double CommonIntegrateBrownianStepKernel::computeKineticEnergy(ContextImpl& cont
 void CommonIntegrateVariableVerletStepKernel::initialize(const System& system, const VariableVerletIntegrator& integrator) {
     cc.initializeContexts();
     cc.setAsCurrent();
-    ComputeProgram program = cc.compileProgram(CommonKernelSources::verlet);
-    kernel1 = program->createKernel("integrateVerletPart1");
-    kernel2 = program->createKernel("integrateVerletPart2");
-    selectSizeKernel = program->createKernel("selectVerletStepSize");
+    compiledProgram = cc.compileProgramAsync(CommonKernelSources::verlet);
     blockSize = min(256, system.getNumParticles());
 }
 
@@ -6269,6 +6270,10 @@ double CommonIntegrateVariableVerletStepKernel::execute(ContextImpl& context, co
     int paddedNumAtoms = cc.getPaddedNumAtoms();
     if (!hasInitializedKernels) {
         hasInitializedKernels = true;
+        ComputeProgram program = compiledProgram.get();
+        kernel1 = program->createKernel("integrateVerletPart1");
+        kernel2 = program->createKernel("integrateVerletPart2");
+        selectSizeKernel = program->createKernel("selectVerletStepSize");
         kernel1->addArg(numAtoms);
         kernel1->addArg(paddedNumAtoms);
         kernel1->addArg(integration.getStepSize());
@@ -6356,10 +6361,7 @@ void CommonIntegrateVariableLangevinStepKernel::initialize(const System& system,
     cc.initializeContexts();
     cc.setAsCurrent();
     cc.getIntegrationUtilities().initRandomNumberGenerator(integrator.getRandomNumberSeed());
-    ComputeProgram program = cc.compileProgram(CommonKernelSources::langevin);
-    kernel1 = program->createKernel("integrateLangevinPart1");
-    kernel2 = program->createKernel("integrateLangevinPart2");
-    selectSizeKernel = program->createKernel("selectLangevinStepSize");
+    compiledProgram = cc.compileProgramAsync(CommonKernelSources::langevin);
     params.initialize(cc, 3, cc.getUseDoublePrecision() || cc.getUseMixedPrecision() ? sizeof(double) : sizeof(float), "langevinParams");
     blockSize = min(256, system.getNumParticles());
     blockSize = max(blockSize, params.getSize());
@@ -6373,6 +6375,10 @@ double CommonIntegrateVariableLangevinStepKernel::execute(ContextImpl& context, 
     bool useDouble = cc.getUseDoublePrecision() || cc.getUseMixedPrecision();
     if (!hasInitializedKernels) {
         hasInitializedKernels = true;
+        ComputeProgram program = compiledProgram.get();
+        kernel1 = program->createKernel("integrateLangevinPart1");
+        kernel2 = program->createKernel("integrateLangevinPart2");
+        selectSizeKernel = program->createKernel("selectLangevinStepSize");
         kernel1->addArg(numAtoms);
         kernel1->addArg(paddedNumAtoms);
         kernel1->addArg(cc.getVelm());
