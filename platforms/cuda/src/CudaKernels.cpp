@@ -972,7 +972,7 @@ void CudaCalcNonbondedForceKernel::initialize(const System& system, const Nonbon
             }
             exclusionAtoms.upload(exclusionAtomsVec);
             map<string, string> replacements;
-            replacements["PARAMS"] = cu.getBondedUtilities().addArgument(exclusionParams.getDevicePointer(), "float4");
+            replacements["PARAMS"] = cu.getBondedUtilities().addArgument(exclusionParams, "float4");
             replacements["EWALD_ALPHA"] = cu.doubleToString(alpha);
             replacements["TWO_OVER_SQRT_PI"] = cu.doubleToString(2.0/sqrt(M_PI));
             replacements["DO_LJPME"] = doLJPME ? "1" : "0";
@@ -1032,7 +1032,7 @@ void CudaCalcNonbondedForceKernel::initialize(const System& system, const Nonbon
         baseExceptionParams.upload(baseExceptionParamsVec);
         map<string, string> replacements;
         replacements["APPLY_PERIODIC"] = (usePeriodic && force.getExceptionsUsePeriodicBoundaryConditions() ? "1" : "0");
-        replacements["PARAMS"] = cu.getBondedUtilities().addArgument(exceptionParams.getDevicePointer(), "float4");
+        replacements["PARAMS"] = cu.getBondedUtilities().addArgument(exceptionParams, "float4");
         cu.getBondedUtilities().addInteraction(atoms, cu.replaceStrings(CommonKernelSources::nonbondedExceptions, replacements), force.getForceGroup());
     }
     
@@ -1105,14 +1105,44 @@ void CudaCalcNonbondedForceKernel::initialize(const System& system, const Nonbon
     
     // Initialize the kernel for updating parameters.
     
-    CUmodule module = cu.createModule(CommonKernelSources::nonbondedParameters, paramsDefines);
-    computeParamsKernel = cu.getKernel(module, "computeParameters");
-    computeExclusionParamsKernel = cu.getKernel(module, "computeExclusionParameters");
+    compiledParametersProgram = cu.compileProgramAsync(CommonKernelSources::nonbondedParameters, paramsDefines);
     info = new ForceInfo(force);
     cu.addForce(info);
 }
 
 double CudaCalcNonbondedForceKernel::execute(ContextImpl& context, bool includeForces, bool includeEnergy, bool includeDirect, bool includeReciprocal) {
+    if (!hasInitializedKernel) {
+        hasInitializedKernel = true;
+        ComputeProgram program = compiledParametersProgram.get();
+        computeParamsKernel = program->createKernel("computeParameters");
+        computeExclusionParamsKernel = program->createKernel("computeExclusionParameters");
+        computeParamsKernel->addArg(cu.getEnergyBuffer());
+        computeParamsKernel->addArg();
+        computeParamsKernel->addArg(globalParams);
+        computeParamsKernel->addArg(cu.getPaddedNumAtoms());
+        computeParamsKernel->addArg(baseParticleParams);
+        computeParamsKernel->addArg(cu.getPosq());
+        computeParamsKernel->addArg(charges);
+        computeParamsKernel->addArg(sigmaEpsilon);
+        computeParamsKernel->addArg(particleParamOffsets);
+        computeParamsKernel->addArg(particleOffsetIndices);
+        if (exceptionParams.isInitialized()) {
+            computeParamsKernel->addArg(exceptionParams.getSize());
+            computeParamsKernel->addArg(baseExceptionParams);
+            computeParamsKernel->addArg(exceptionParams);
+            computeParamsKernel->addArg(exceptionParamOffsets);
+            computeParamsKernel->addArg(exceptionOffsetIndices);
+        }
+        if (exclusionParams.isInitialized()) {
+            computeExclusionParamsKernel->addArg(cu.getPosq());
+            computeExclusionParamsKernel->addArg(charges);
+            computeExclusionParamsKernel->addArg(sigmaEpsilon);
+            computeExclusionParamsKernel->addArg(exclusionParams.getSize());
+            computeExclusionParamsKernel->addArg(exclusionAtoms);
+            computeExclusionParamsKernel->addArg(exclusionParams);
+        }
+    }
+
     // Update particle and exception parameters.
 
     bool paramChanged = false;
@@ -1129,26 +1159,10 @@ double CudaCalcNonbondedForceKernel::execute(ContextImpl& context, bool includeF
     }
     double energy = (includeReciprocal ? ewaldSelfEnergy : 0.0);
     if (recomputeParams || hasOffsets) {
-        bool computeSelfEnergy = (includeEnergy && includeReciprocal);
-        int numAtoms = cu.getPaddedNumAtoms();
-        vector<void*> paramsArgs = {&cu.getEnergyBuffer().getDevicePointer(), &computeSelfEnergy, &globalParams.getDevicePointer(), &numAtoms,
-                &baseParticleParams.getDevicePointer(), &cu.getPosq().getDevicePointer(), &charges.getDevicePointer(), &sigmaEpsilon.getDevicePointer(),
-                &particleParamOffsets.getDevicePointer(), &particleOffsetIndices.getDevicePointer()};
-        int numExceptions;
-        if (exceptionParams.isInitialized()) {
-            numExceptions = exceptionParams.getSize();
-            paramsArgs.push_back(&numExceptions);
-            paramsArgs.push_back(&baseExceptionParams.getDevicePointer());
-            paramsArgs.push_back(&exceptionParams.getDevicePointer());
-            paramsArgs.push_back(&exceptionParamOffsets.getDevicePointer());
-            paramsArgs.push_back(&exceptionOffsetIndices.getDevicePointer());
-        }
-        cu.executeKernel(computeParamsKernel, &paramsArgs[0], cu.getPaddedNumAtoms());
+        computeParamsKernel->execute(cu.getPaddedNumAtoms());
         if (exclusionParams.isInitialized()) {
             int numExclusions = exclusionParams.getSize();
-            vector<void*> exclusionParamsArgs = {&cu.getPosq().getDevicePointer(), &charges.getDevicePointer(), &sigmaEpsilon.getDevicePointer(),
-                    &numExclusions, &exclusionAtoms.getDevicePointer(), &exclusionParams.getDevicePointer()};
-            cu.executeKernel(computeExclusionParamsKernel, &exclusionParamsArgs[0], numExclusions);
+            computeExclusionParamsKernel->execute(numExclusions);
         }
         if (usePmeStream) {
             cuEventRecord(paramsSyncEvent, cu.getCurrentStream());

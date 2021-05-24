@@ -47,14 +47,10 @@ void CudaBondedUtilities::addInteraction(const vector<vector<int> >& atoms, cons
     }
 }
 
-string CudaBondedUtilities::addArgument(CUdeviceptr data, const string& type) {
-    arguments.push_back(data);
+string CudaBondedUtilities::addArgument(ArrayInterface& data, const string& type) {
+    arguments.push_back(&data);
     argTypes.push_back(type);
     return "customArg"+context.intToString(arguments.size());
-}
-
-string CudaBondedUtilities::addArgument(ArrayInterface& data, const string& type) {
-    return addArgument(context.unwrap(data).getDevicePointer(), type);
 }
 
 string CudaBondedUtilities::addEnergyParameterDerivative(const string& param) {
@@ -109,7 +105,6 @@ void CudaBondedUtilities::initialize(const System& system) {
     // Create the kernel.
 
     stringstream s;
-    s<<CudaKernelSources::vectorOps;
     for (int i = 0; i < (int) prefixCode.size(); i++)
         s<<prefixCode[i];
     s<<"extern \"C\" __global__ void computeBondedForces(unsigned long long* __restrict__ forceBuffer, mixed* __restrict__ energyBuffer, const real4* __restrict__ posq, int groups, real4 periodicBoxSize, real4 invPeriodicBoxSize, real4 periodicBoxVecX, real4 periodicBoxVecY, real4 periodicBoxVecZ";
@@ -140,8 +135,7 @@ void CudaBondedUtilities::initialize(const System& system) {
     s<<"}\n";
     map<string, string> defines;
     defines["PADDED_NUM_ATOMS"] = context.intToString(context.getPaddedNumAtoms());
-    CUmodule module = context.createModule(s.str(), defines);
-    kernel = context.getKernel(module, "computeBondedForces");
+    compiledProgram = context.compileProgramAsync(s.str(), defines);
     forceAtoms.clear();
     forceSource.clear();
 }
@@ -180,25 +174,39 @@ void CudaBondedUtilities::computeInteractions(int groups) {
         return;
     if (!hasInitializedKernels) {
         hasInitializedKernels = true;
-        kernelArgs.push_back(&context.getForce().getDevicePointer());
-        kernelArgs.push_back(&context.getEnergyBuffer().getDevicePointer());
-        kernelArgs.push_back(&context.getPosq().getDevicePointer());
-        kernelArgs.push_back(NULL);
-        kernelArgs.push_back(context.getPeriodicBoxSizePointer());
-        kernelArgs.push_back(context.getInvPeriodicBoxSizePointer());
-        kernelArgs.push_back(context.getPeriodicBoxVecXPointer());
-        kernelArgs.push_back(context.getPeriodicBoxVecYPointer());
-        kernelArgs.push_back(context.getPeriodicBoxVecZPointer());
+        ComputeProgram program = compiledProgram.get();
+        kernel = program->createKernel("computeBondedForces");
+        kernel->addArg(context.getForce());
+        kernel->addArg(context.getEnergyBuffer());
+        kernel->addArg(context.getPosq());
+        for (int i = 0; i < 6; i++)
+            kernel->addArg();
         for (int i = 0; i < (int) atomIndices.size(); i++)
             for (int j = 0; j < (int) atomIndices[i].size(); j++)
-                kernelArgs.push_back(&atomIndices[i][j].getDevicePointer());
+                kernel->addArg(atomIndices[i][j]);
         for (int i = 0; i < (int) arguments.size(); i++)
-            kernelArgs.push_back(&arguments[i]);
+            kernel->addArg(*arguments[i]);
         if (energyParameterDerivatives.size() > 0)
-            kernelArgs.push_back(&context.getEnergyParamDerivBuffer().getDevicePointer());
+            kernel->addArg(context.getEnergyParamDerivBuffer());
     }
     if (!hasInteractions)
         return;
-    kernelArgs[3] = &groups;
-    context.executeKernel(kernel, &kernelArgs[0], maxBonds);
+    kernel->setArg(3, groups);
+    Vec3 a, b, c;
+    context.getPeriodicBoxVectors(a, b, c);
+    if (context.getUseDoublePrecision()) {
+        kernel->setArg(4, mm_double4(a[0], b[1], c[2], 0.0));
+        kernel->setArg(5, mm_double4(1.0/a[0], 1.0/b[1], 1.0/c[2], 0.0));
+        kernel->setArg(6, mm_double4(a[0], a[1], a[2], 0.0));
+        kernel->setArg(7, mm_double4(b[0], b[1], b[2], 0.0));
+        kernel->setArg(8, mm_double4(c[0], c[1], c[2], 0.0));
+    }
+    else {
+        kernel->setArg(4, mm_float4((float) a[0], (float) b[1], (float) c[2], 0.0f));
+        kernel->setArg(5, mm_float4(1.0f/(float) a[0], 1.0f/(float) b[1], 1.0f/(float) c[2], 0.0f));
+        kernel->setArg(6, mm_float4((float) a[0], (float) a[1], (float) a[2], 0.0f));
+        kernel->setArg(7, mm_float4((float) b[0], (float) b[1], (float) b[2], 0.0f));
+        kernel->setArg(8, mm_float4((float) c[0], (float) c[1], (float) c[2], 0.0f));
+    }
+    kernel->execute(maxBonds);
 }

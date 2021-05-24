@@ -208,7 +208,7 @@ private:
 class CudaCalcNonbondedForceKernel : public CalcNonbondedForceKernel {
 public:
     CudaCalcNonbondedForceKernel(std::string name, const Platform& platform, CudaContext& cu, const System& system) : CalcNonbondedForceKernel(name, platform),
-            cu(cu), hasInitializedFFT(false), sort(NULL), dispersionFft(NULL), fft(NULL), pmeio(NULL), usePmeStream(false) {
+            cu(cu), hasInitializedFFT(false), hasInitializedKernel(false), sort(NULL), dispersionFft(NULL), fft(NULL), pmeio(NULL), usePmeStream(false) {
     }
     ~CudaCalcNonbondedForceKernel();
     /**
@@ -273,7 +273,7 @@ private:
     class SyncStreamPostComputation;
     CudaContext& cu;
     ForceInfo* info;
-    bool hasInitializedFFT;
+    bool hasInitializedFFT, hasInitializedKernel;
     CudaArray charges;
     CudaArray sigmaEpsilon;
     CudaArray exceptionParams;
@@ -308,7 +308,8 @@ private:
     CudaFFT3D* dispersionFft;
     cufftHandle dispersionFftForward;
     cufftHandle dispersionFftBackward;
-    CUfunction computeParamsKernel, computeExclusionParamsKernel;
+    std::future<ComputeProgram> compiledParametersProgram;
+    ComputeKernel computeParamsKernel, computeExclusionParamsKernel;
     CUfunction ewaldSumsKernel;
     CUfunction ewaldForcesKernel;
     CUfunction pmeGridIndexKernel;

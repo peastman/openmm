@@ -1251,7 +1251,7 @@ double OpenCLCalcNonbondedForceKernel::execute(ContextImpl& context, bool includ
     }
     double energy = (includeReciprocal ? ewaldSelfEnergy : 0.0);
     if (recomputeParams || hasOffsets) {
-        computeParamsKernel->setArg(1, includeEnergy && includeReciprocal);
+        computeParamsKernel->setArg(1, (int) (includeEnergy && includeReciprocal));
         computeParamsKernel->execute(cl.getPaddedNumAtoms());
         if (exclusionParams.isInitialized())
             computeExclusionParamsKernel->execute(exclusionParams.getSize());

@@ -167,6 +167,15 @@ public:
      */
     ComputeProgram compileProgram(const std::string source, const std::map<std::string, std::string>& defines=std::map<std::string, std::string>());
     /**
+     * Compile source code to create a ComputeProgram.  This is identical to compileProgram()
+     * except that the compilation is done asynchronously on a separate thread.  On some platforms,
+     * this can allow multiple kernels to be compiled in parallel.
+     *
+     * @param source             the source code of the program
+     * @param defines            a set of preprocessor definitions (name, value) to define when compiling the program
+     */
+    std::future<ComputeProgram> compileProgramAsync(const std::string source, const std::map<std::string, std::string>& defines=std::map<std::string, std::string>());
+    /**
      * Convert an array to an CudaArray.  If the argument is already an CudaArray, this simply casts it.
      * If the argument is a ComputeArray that wraps a CudaArray, this returns the wrapped array.  For any
      * other argument, this throws an exception.

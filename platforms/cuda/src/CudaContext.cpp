@@ -44,6 +44,7 @@
 #include "openmm/VirtualSite.h"
 #include "CudaExpressionUtilities.h"
 #include "openmm/internal/ContextImpl.h"
+#include "openmm/internal/OSRngSeed.h"
 #include <algorithm>
 #include <cstdlib>
 #include <fstream>
@@ -51,6 +52,7 @@
 #include <iostream>
 #include <set>
 #include <sstream>
+#include <thread>
 #include <typeinfo>
 #include <sys/stat.h>
 #include <cudaProfiler.h>
@@ -566,6 +568,7 @@ CUmodule CudaContext::createModule(const string source, const map<string, string
 
     stringstream tempFileName;
     tempFileName << "openmmTempKernel" << this; // Include a pointer to this context as part of the filename to avoid collisions.
+    tempFileName << "_" << (unsigned int) osrngseed();
 #ifdef WIN32
     tempFileName << "_" << GetCurrentProcessId();
 #else
@@ -690,6 +693,14 @@ ComputeEvent CudaContext::createEvent() {
 ComputeProgram CudaContext::compileProgram(const std::string source, const std::map<std::string, std::string>& defines) {
     CUmodule module = createModule(CudaKernelSources::vectorOps+source, defines);
     return shared_ptr<ComputeProgramImpl>(new CudaProgram(*this, module));
+}
+
+future<ComputeProgram> CudaContext::compileProgramAsync(const std::string source, const std::map<std::string, std::string>& defines) {
+    return async(launch::async, [&, source, defines]() {
+        setAsCurrent();
+        CUmodule module = createModule(CudaKernelSources::vectorOps+source, defines);
+        return shared_ptr<ComputeProgramImpl>(new CudaProgram(*this, module));
+    });
 }
 
 CudaArray& CudaContext::unwrap(ArrayInterface& array) const {
