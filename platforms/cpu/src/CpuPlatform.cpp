@@ -33,6 +33,7 @@
 #include "CpuKernelFactory.h"
 #include "CpuKernels.h"
 #include "CpuSETTLE.h"
+#include "CpuShake.h"
 #include "ReferenceConstraints.h"
 #include "openmm/OpenMMException.h"
 #include "openmm/internal/hardware.h"
@@ -128,6 +129,11 @@ void CpuPlatform::contextCreated(ContextImpl& context, const map<string, string>
         CpuSETTLE* parallelSettle = new CpuSETTLE(context.getSystem(), *(ReferenceSETTLEAlgorithm*) constraints.settle, data->threads);
         delete constraints.settle;
         constraints.settle = parallelSettle;
+    }
+    if (constraints.shake != NULL) {
+        CpuShake* parallelShake = new CpuShake(*(ReferenceShakeAlgorithm*) constraints.shake, data->threads);
+        delete constraints.shake;
+        constraints.shake = parallelShake;
     }
 }
 

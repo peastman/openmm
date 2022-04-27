@@ -1,6 +1,3 @@
-#ifndef OPENMM_REFERENCECONSTRAINTS_H_
-#define OPENMM_REFERENCECONSTRAINTS_H_
-
 /* -------------------------------------------------------------------------- *
  *                                   OpenMM                                   *
  * -------------------------------------------------------------------------- *
@@ -9,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2013 Stanford University and the Authors.           *
+ * Portions copyright (c) 2022 Stanford University and the Authors.           *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -32,47 +29,20 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
  * -------------------------------------------------------------------------- */
 
-#include "ReferenceConstraintAlgorithm.h"
-#include "openmm/System.h"
+#include "CpuShake.h"
+#include "openmm/internal/ThreadPool.h"
 
-namespace OpenMM {
+using namespace OpenMM;
+using namespace std;
 
-/**
- * This class uses multiple algorithms to apply constraints as efficiently as possible.  It identifies clusters
- * of three atoms that can be handled by SETTLE, and creates a ReferenceSETTLEAlgorithm object to handle them.
- * It then creates a ReferenceCCMAAlgorithm object to handle any remaining constraints.
- */
-class OPENMM_EXPORT ReferenceConstraints : public ReferenceConstraintAlgorithm {
-public:
-    ReferenceConstraints(const System& system);
-    virtual ~ReferenceConstraints();
+CpuShake::CpuShake(const ReferenceShakeAlgorithm& shake, ThreadPool& threads) : ReferenceShakeAlgorithm(shake), threads(threads) {
+}
 
-    /**
-     * Apply the constraint algorithm.
-     * 
-     * @param atomCoordinates  the original atom coordinates
-     * @param atomCoordinatesP the new atom coordinates
-     * @param inverseMasses    1/mass
-     * @param tolerance        the constraint tolerance
-     */
-    void apply(std::vector<OpenMM::Vec3>& atomCoordinates, std::vector<OpenMM::Vec3>& atomCoordinatesP, std::vector<double>& inverseMasses, double tolerance);
-
-    /**
-     * Apply the constraint algorithm to velocities.
-     * 
-     * @param atomCoordinates  the atom coordinates
-     * @param velocities       the velocities to modify
-     * @param inverseMasses    1/mass
-     * @param tolerance        the constraint tolerance
-     */
-    void applyToVelocities(std::vector<OpenMM::Vec3>& atomCoordinates, std::vector<OpenMM::Vec3>& velocities, std::vector<double>& inverseMasses, double tolerance);
-    ReferenceConstraintAlgorithm* ccma;
-    ReferenceConstraintAlgorithm* settle;
-    ReferenceConstraintAlgorithm* shake;
-private:
-    struct ShakeCluster;
-};
-
-} // namespace OpenMM
-
-#endif /*OPENMM_REFERENCECONSTRAINTS_H_*/
+void CpuShake::applyConstraints(vector<Vec3>& atomCoordinates, vector<Vec3>& atomCoordinatesP,
+                                vector<double>& inverseMasses, bool constrainingVelocities, double tolerance) {
+    threads.execute([&] (ThreadPool& threads, int threadIndex) {
+        for (int cluster = threadIndex; cluster < clusterAtoms.size(); cluster += threads.getNumThreads())
+            applyToCluster(cluster, atomCoordinates, atomCoordinatesP, inverseMasses, constrainingVelocities, tolerance);
+    });
+    threads.waitForThreads();
+}

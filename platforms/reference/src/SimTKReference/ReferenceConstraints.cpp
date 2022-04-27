@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2013-2015 Stanford University and the Authors.      *
+ * Portions copyright (c) 2013-2022 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -32,6 +32,7 @@
 #include "ReferenceConstraints.h"
 #include "ReferenceCCMAAlgorithm.h"
 #include "ReferenceSETTLEAlgorithm.h"
+#include "ReferenceShakeAlgorithm.h"
 #include "openmm/HarmonicAngleForce.h"
 #include "openmm/OpenMMException.h"
 #include <map>
@@ -41,7 +42,40 @@
 using namespace OpenMM;
 using namespace std;
 
-ReferenceConstraints::ReferenceConstraints(const System& system) : ccma(NULL), settle(NULL) {
+struct ReferenceConstraints::ShakeCluster {
+    int centralID;
+    int peripheralID[3];
+    int size;
+    bool valid;
+    double distance;
+    double centralInvMass, peripheralInvMass;
+    ShakeCluster() : valid(true) {
+    }
+    ShakeCluster(int centralID, double invMass) : centralID(centralID), centralInvMass(invMass), size(0), valid(true) {
+    }
+    void addAtom(int id, double dist, double invMass) {
+        if (size == 3 || (size > 0 && abs(dist-distance)/distance > 1e-8) || (size > 0 && abs(invMass-peripheralInvMass)/peripheralInvMass > 1e-8))
+            valid = false;
+        else {
+            peripheralID[size++] = id;
+            distance = dist;
+            peripheralInvMass = invMass;
+        }
+    }
+    void markInvalid(map<int, ShakeCluster>& allClusters, vector<bool>& invalidForShake)
+    {
+        valid = false;
+        invalidForShake[centralID] = true;
+        for (int i = 0; i < size; i++) {
+            invalidForShake[peripheralID[i]] = true;
+            map<int, ShakeCluster>::iterator otherCluster = allClusters.find(peripheralID[i]);
+            if (otherCluster != allClusters.end() && otherCluster->second.valid)
+                otherCluster->second.markInvalid(allClusters, invalidForShake);
+        }
+    }
+};
+
+ReferenceConstraints::ReferenceConstraints(const System& system) : ccma(NULL), settle(NULL), shake(NULL) {
     int numParticles = system.getNumParticles();
     vector<double> masses(numParticles);
     for (int i = 0; i < numParticles; ++i)
@@ -145,6 +179,73 @@ ReferenceConstraints::ReferenceConstraints(const System& system) : ccma(NULL), s
             settle = new ReferenceSETTLEAlgorithm(atom1, atom2, atom3, distance1, distance2, masses);
     }
 
+    // Find clusters consisting of a central atom with up to three peripheral atoms.
+
+    map<int, ShakeCluster> clusters;
+    vector<bool> invalidForShake(numParticles, false);
+    for (int i = 0; i < atom1.size(); i++) {
+        if (isSettleAtom[atom1[i]])
+            continue; // This is being taken care of with SETTLE.
+
+        // Determine which is the central atom.
+
+        bool firstIsCentral;
+        if (constraintCount[atom1[i]] > 1)
+            firstIsCentral = true;
+        else if (constraintCount[atom2[i]] > 1)
+            firstIsCentral = false;
+        else if (atom1[i] < atom2[i])
+            firstIsCentral = true;
+        else
+            firstIsCentral = false;
+        int centralID, peripheralID;
+        if (firstIsCentral) {
+            centralID = atom1[i];
+            peripheralID = atom2[i];
+        }
+        else {
+            centralID = atom2[i];
+            peripheralID = atom1[i];
+        }
+
+        // Add it to the cluster.
+
+        if (clusters.find(centralID) == clusters.end()) {
+            clusters[centralID] = ShakeCluster(centralID, 1.0/system.getParticleMass(centralID));
+        }
+        ShakeCluster& cluster = clusters[centralID];
+        cluster.addAtom(peripheralID, distance[i], 1.0/system.getParticleMass(peripheralID));
+        if (constraintCount[peripheralID] != 1 || invalidForShake[atom1[i]] || invalidForShake[atom2[i]]) {
+            cluster.markInvalid(clusters, invalidForShake);
+            map<int, ShakeCluster>::iterator otherCluster = clusters.find(peripheralID);
+            if (otherCluster != clusters.end() && otherCluster->second.valid)
+                otherCluster->second.markInvalid(clusters, invalidForShake);
+        }
+    }
+    vector<vector<int> > clusterAtoms;
+    vector<double> clusterDistance;
+    for (map<int, ShakeCluster>::iterator iter = clusters.begin(); iter != clusters.end(); ++iter) {
+        ShakeCluster& cluster = iter->second;
+        if (cluster.valid) {
+            cluster.valid = !invalidForShake[cluster.centralID] && cluster.size == constraintCount[cluster.centralID];
+            for (int i = 0; i < cluster.size; i++)
+                if (invalidForShake[cluster.peripheralID[i]])
+                    cluster.valid = false;
+            if (cluster.valid) {
+                clusterAtoms.push_back(vector<int>());
+                clusterAtoms.back().push_back(cluster.centralID);
+                isSettleAtom[cluster.centralID] = true;
+                for (int i = 0; i < cluster.size; i++) {
+                    clusterAtoms.back().push_back(cluster.peripheralID[i]);
+                    isSettleAtom[cluster.peripheralID[i]] = true;
+                }
+                clusterDistance.push_back(cluster.distance);
+            }
+        }
+    }
+    if (clusterAtoms.size() > 0)
+        shake = new ReferenceShakeAlgorithm(clusterAtoms, clusterDistance);
+
     // All other constraints are handled with CCMA.
 
     vector<int> ccmaConstraints;
@@ -189,6 +290,8 @@ ReferenceConstraints::~ReferenceConstraints() {
         delete ccma;
     if (settle != NULL)
         delete settle;
+    if (shake != NULL)
+        delete shake;
 }
 
 void ReferenceConstraints::apply(vector<OpenMM::Vec3>& atomCoordinates, vector<OpenMM::Vec3>& atomCoordinatesP, vector<double>& inverseMasses, double tolerance) {
@@ -196,6 +299,8 @@ void ReferenceConstraints::apply(vector<OpenMM::Vec3>& atomCoordinates, vector<O
         ccma->apply(atomCoordinates, atomCoordinatesP, inverseMasses, tolerance);
     if (settle != NULL)
         settle->apply(atomCoordinates, atomCoordinatesP, inverseMasses, tolerance);
+    if (shake != NULL)
+        shake->apply(atomCoordinates, atomCoordinatesP, inverseMasses, tolerance);
 }
 
 void ReferenceConstraints::applyToVelocities(vector<OpenMM::Vec3>& atomCoordinates, vector<OpenMM::Vec3>& velocities, vector<double>& inverseMasses, double tolerance) {
@@ -203,4 +308,6 @@ void ReferenceConstraints::applyToVelocities(vector<OpenMM::Vec3>& atomCoordinat
         ccma->applyToVelocities(atomCoordinates, velocities, inverseMasses, tolerance);
     if (settle != NULL)
         settle->applyToVelocities(atomCoordinates, velocities, inverseMasses, tolerance);
+    if (shake != NULL)
+        shake->applyToVelocities(atomCoordinates, velocities, inverseMasses, tolerance);
 }
