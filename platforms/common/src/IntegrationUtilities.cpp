@@ -381,12 +381,13 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
         vector<int> numAtomConstraintsVec(ccmaNumAtomConstraints.getSize());
         vector<int> constraintMatrixColumnVec(ccmaConstraintMatrixColumn.getSize());
         int elementSize = (context.getUseDoublePrecision() || context.getUseMixedPrecision() ? sizeof(double) : sizeof(float));
-        ccmaDistance.initialize(context, numCCMA, 4*elementSize, "CcmaDistance");
+        ccmaDistance.initialize(context, numCCMA, elementSize, "CcmaDistance");
+        ccmaDirection.initialize(context, numCCMA, 4*elementSize, "CcmaDirection");
         ccmaDelta1.initialize(context, numCCMA, elementSize, "CcmaDelta1");
         ccmaDelta2.initialize(context, numCCMA, elementSize, "CcmaDelta2");
         ccmaReducedMass.initialize(context, numCCMA, elementSize, "CcmaReducedMass");
         ccmaConstraintMatrixValue.initialize(context, numCCMA*maxRowElements, elementSize, "ConstraintMatrixValue");
-        vector<mm_double4> distanceVec(ccmaDistance.getSize());
+        vector<double> distanceVec(ccmaDistance.getSize());
         vector<double> reducedMassVec(ccmaReducedMass.getSize());
         vector<double> constraintMatrixValueVec(ccmaConstraintMatrixValue.getSize());
         for (int i = 0; i < numCCMA; i++) {
@@ -394,7 +395,7 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
             int c = ccmaConstraints[index];
             atomsVec[i].x = atom1[c];
             atomsVec[i].y = atom2[c];
-            distanceVec[i].w = distance[c];
+            distanceVec[i] = distance[c];
             reducedMassVec[i] = (0.5/(1.0/system.getParticleMass(atom1[c])+1.0/system.getParticleMass(atom2[c])));
             for (unsigned int j = 0; j < matrix[index].size(); j++) {
                 constraintMatrixColumnVec[i+j*numCCMA] = matrix[index][j].first;
@@ -641,13 +642,14 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
     }
     if (ccmaConstraintAtoms.isInitialized()) {
         ccmaDirectionsKernel->addArg(ccmaConstraintAtoms);
-        ccmaDirectionsKernel->addArg(ccmaDistance);
+        ccmaDirectionsKernel->addArg(ccmaDirection);
         ccmaDirectionsKernel->addArg(context.getPosq());
         ccmaDirectionsKernel->addArg(ccmaConverged);
         if (context.getUseMixedPrecision())
             ccmaDirectionsKernel->addArg(context.getPosqCorrection());
         ccmaPosForceKernel->addArg(ccmaConstraintAtoms);
         ccmaPosForceKernel->addArg(ccmaDistance);
+        ccmaPosForceKernel->addArg(ccmaDirection);
         ccmaPosForceKernel->addArg(posDelta);
         ccmaPosForceKernel->addArg(ccmaReducedMass);
         ccmaPosForceKernel->addArg(ccmaDelta1);
@@ -657,6 +659,7 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
         ccmaPosForceKernel->addArg();
         ccmaVelForceKernel->addArg(ccmaConstraintAtoms);
         ccmaVelForceKernel->addArg(ccmaDistance);
+        ccmaVelForceKernel->addArg(ccmaDirection);
         ccmaVelForceKernel->addArg(context.getVelm());
         ccmaVelForceKernel->addArg(ccmaReducedMass);
         ccmaVelForceKernel->addArg(ccmaDelta1);
@@ -673,7 +676,7 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
         ccmaUpdateKernel->addArg(ccmaAtoms);
         ccmaUpdateKernel->addArg(ccmaNumAtomConstraints);
         ccmaUpdateKernel->addArg(ccmaAtomConstraints);
-        ccmaUpdateKernel->addArg(ccmaDistance);
+        ccmaUpdateKernel->addArg(ccmaDirection);
         ccmaUpdateKernel->addArg();
         ccmaUpdateKernel->addArg(context.getVelm());
         ccmaUpdateKernel->addArg(ccmaDelta1);
@@ -686,6 +689,7 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
         ccmaFullKernel->addArg(ccmaAtomConstraints);
         ccmaFullKernel->addArg(ccmaConstraintAtoms);
         ccmaFullKernel->addArg(ccmaDistance);
+        ccmaFullKernel->addArg(ccmaDirection);
         ccmaFullKernel->addArg(context.getPosq());
         ccmaFullKernel->addArg(context.getVelm());
         ccmaFullKernel->addArg(posDelta);

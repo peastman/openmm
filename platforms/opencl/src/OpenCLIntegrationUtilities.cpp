@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2009-2020 Stanford University and the Authors.      *
+ * Portions copyright (c) 2009-2022 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -80,18 +80,18 @@ void OpenCLIntegrationUtilities::applyConstraintsImpl(bool constrainVelocities, 
             // Use the version of CCMA that runs in a single kernel with one workgroup.
             ccmaFullKernel->setArg(0, (int) constrainVelocities);
             if (context.getUseDoublePrecision() || context.getUseMixedPrecision())
-                ccmaFullKernel->setArg(14, tol);
+                ccmaFullKernel->setArg(15, tol);
             else
-                ccmaFullKernel->setArg(14, (float) tol);
+                ccmaFullKernel->setArg(15, (float) tol);
             ccmaFullKernel->execute(128, 128);
         }
         else {
             // Use the version of CCMA that uses multiple kernels.
-            ccmaForceKernel->setArg(6, ccmaConvergedHostBuffer);
+            ccmaForceKernel->setArg(7, ccmaConvergedHostBuffer);
             if (context.getUseDoublePrecision() || context.getUseMixedPrecision())
-                ccmaForceKernel->setArg(7, tol);
+                ccmaForceKernel->setArg(8, tol);
             else
-                ccmaForceKernel->setArg(7, (float) tol);
+                ccmaForceKernel->setArg(8, (float) tol);
             ccmaDirectionsKernel->execute(ccmaConstraintAtoms.getSize());
             const int checkInterval = 4;
             OpenCLContext& cl = dynamic_cast<OpenCLContext&>(context);
@@ -102,7 +102,7 @@ void OpenCLIntegrationUtilities::applyConstraintsImpl(bool constrainVelocities, 
             queue.enqueueUnmapMemObject(ccmaConvergedHostBuffer.getDeviceBuffer(), ccmaConvergedHostMemory);
             ccmaUpdateKernel->setArg(4, constrainVelocities ? context.getVelm() : posDelta);
             for (int i = 0; i < 150; i++) {
-                ccmaForceKernel->setArg(8, i);
+                ccmaForceKernel->setArg(9, i);
                 ccmaForceKernel->execute(ccmaConstraintAtoms.getSize());
                 cl::Event event;
                 if ((i+1)%checkInterval == 0 && !ccmaUseDirectBuffer)

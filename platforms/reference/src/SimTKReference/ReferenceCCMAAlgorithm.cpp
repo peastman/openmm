@@ -1,5 +1,5 @@
 
-/* Portions copyright (c) 2006-2019 Stanford University and Simbios.
+/* Portions copyright (c) 2006-2022 Stanford University and Simbios.
  * Contributors: Peter Eastman, Pande Group
  *
  * Permission is hereby granted, free of charge, to any person obtaining
@@ -57,10 +57,8 @@ ReferenceCCMAAlgorithm::ReferenceCCMAAlgorithm(int numberOfAtoms,
     // work arrays
 
     if (_numberOfConstraints > 0) {
-        _r_ij.resize(numberOfConstraints);
-        _d_ij2 = SimTKOpenMMUtilities::allocateOneDRealOpenMMArray(numberOfConstraints, NULL, 1, 0.0, "dij_2");
-        _distanceTolerance = SimTKOpenMMUtilities::allocateOneDRealOpenMMArray(numberOfConstraints, NULL, 1, 0.0, "distanceTolerance");
-        _reducedMasses = SimTKOpenMMUtilities::allocateOneDRealOpenMMArray(numberOfConstraints, NULL, 1, 0.0, "reducedMasses");
+        u_ij.resize(numberOfConstraints);
+        reducedMasses.resize(numberOfConstraints);
     }
     if (numberOfConstraints > 0)
     {
@@ -201,14 +199,6 @@ ReferenceCCMAAlgorithm::ReferenceCCMAAlgorithm(int numberOfAtoms,
     }
 }
 
-ReferenceCCMAAlgorithm::~ReferenceCCMAAlgorithm() {
-    if (_numberOfConstraints > 0) {
-        SimTKOpenMMUtilities::freeOneDRealOpenMMArray(_d_ij2, "d_ij2");
-        SimTKOpenMMUtilities::freeOneDRealOpenMMArray(_distanceTolerance, "distanceTolerance");
-        SimTKOpenMMUtilities::freeOneDRealOpenMMArray(_reducedMasses, "reducedMasses");
-    }
-}
-
 int ReferenceCCMAAlgorithm::getNumberOfConstraints() const {
     return _numberOfConstraints;
 }
@@ -235,12 +225,6 @@ void ReferenceCCMAAlgorithm::applyToVelocities(std::vector<OpenMM::Vec3>& atomCo
 void ReferenceCCMAAlgorithm::applyConstraints(vector<Vec3>& atomCoordinates,
                                          vector<Vec3>& atomCoordinatesP,
                                          vector<double>& inverseMasses, bool constrainingVelocities, double tolerance) {
-    // temp arrays
-
-    vector<Vec3>& r_ij = _r_ij;
-    double* d_ij2 = _d_ij2;
-    double* reducedMasses = _reducedMasses;
-
     // calculate reduced masses on 1st pass
 
     if (!_hasInitializedMasses) {
@@ -252,16 +236,14 @@ void ReferenceCCMAAlgorithm::applyConstraints(vector<Vec3>& atomCoordinates,
         }
     }
 
-    // setup: r_ij for each (i,j) constraint
+    // Compute a unit vector along each constrained direction;
 
     for (int ii = 0; ii < _numberOfConstraints; ii++) {
         int atomI = _atomIndices[ii].first;
         int atomJ = _atomIndices[ii].second;
-        r_ij[ii] = atomCoordinates[atomI] - atomCoordinates[atomJ];
-        d_ij2[ii] = r_ij[ii].dot(r_ij[ii]);
+        Vec3 r_ij = atomCoordinates[atomI] - atomCoordinates[atomJ];
+        u_ij[ii] = r_ij/sqrt(r_ij.dot(r_ij));
     }
-    double lowerTol = 1-2*tolerance+tolerance*tolerance;
-    double upperTol = 1+2*tolerance+tolerance*tolerance;
 
     // main loop
 
@@ -276,19 +258,17 @@ void ReferenceCCMAAlgorithm::applyConstraints(vector<Vec3>& atomCoordinates,
             int atomJ = _atomIndices[ii].second;
             Vec3 rp_ij = atomCoordinatesP[atomI] - atomCoordinatesP[atomJ];
             if (constrainingVelocities) {
-                double rrpr = rp_ij.dot(r_ij[ii]);
-                constraintDelta[ii] = -2*reducedMasses[ii]*rrpr/d_ij2[ii];
+                double rrpr = rp_ij.dot(u_ij[ii]);
+                constraintDelta[ii] = -2*reducedMasses[ii]*rrpr;
                 if (fabs(constraintDelta[ii]) <= tolerance)
                     numberConverged++;
             }
             else {
-                double rp2  = rp_ij.dot(rp_ij);
-                double dist2 = _distance[ii]*_distance[ii];
-                double diff = dist2 - rp2;
-                constraintDelta[ii] = 0;
-                double rrpr = DOT3(rp_ij, r_ij[ii]);
-                constraintDelta[ii] = reducedMasses[ii]*diff/rrpr;
-                if (rp2 >= lowerTol*dist2 && rp2 <= upperTol*dist2)
+                double rp = sqrt(rp_ij.dot(rp_ij));
+                double dot = u_ij[ii].dot(rp_ij)/rp;
+                double diff = _distance[ii] - rp;
+                constraintDelta[ii] = reducedMasses[ii]*diff/dot;
+                if (fabs(rp-_distance[ii]) < tolerance)
                     numberConverged++;
             }
         }
@@ -308,7 +288,7 @@ void ReferenceCCMAAlgorithm::applyConstraints(vector<Vec3>& atomCoordinates,
         for (int ii = 0; ii < _numberOfConstraints; ii++) {
             int atomI = _atomIndices[ii].first;
             int atomJ = _atomIndices[ii].second;
-            Vec3 dr = r_ij[ii]*constraintDelta[ii];
+            Vec3 dr = u_ij[ii]*constraintDelta[ii];
             atomCoordinatesP[atomI] += dr*inverseMasses[atomI];
             atomCoordinatesP[atomJ] -= dr*inverseMasses[atomJ];
         }

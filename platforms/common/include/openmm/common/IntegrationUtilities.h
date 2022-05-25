@@ -157,6 +157,7 @@ protected:
     ComputeArray ccmaAtoms;
     ComputeArray ccmaConstraintAtoms;
     ComputeArray ccmaDistance;
+    ComputeArray ccmaDirection;
     ComputeArray ccmaReducedMass;
     ComputeArray ccmaAtomConstraints;
     ComputeArray ccmaNumAtomConstraints;
