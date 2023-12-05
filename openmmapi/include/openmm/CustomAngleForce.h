@@ -47,7 +47,7 @@ namespace OpenMM {
  *
  * To use this class, create a CustomAngleForce object, passing an algebraic expression to the constructor
  * that defines the interaction energy between each set of particles.  The expression may depend on theta, the angle
- * formed by the particles, as well as on any parameters you choose.  Then call addPerAngleParameter() to define per-angle
+ * formed by the particles, and t, the current time, as well as on any parameters you choose.  Then call addPerAngleParameter() to define per-angle
  * parameters, and addGlobalParameter() to define global parameters.  The values of per-angle parameters are specified as
  * part of the system definition, while values of global parameters may be modified during a simulation by calling Context::setParameter().
  * Finally, call addAngle() once for each angle.  After an angle has been added, you can modify its parameters by calling setAngleParameters().

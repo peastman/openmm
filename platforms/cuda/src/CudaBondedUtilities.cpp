@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2011-2019 Stanford University and the Authors.      *
+ * Portions copyright (c) 2011-2023 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -112,7 +112,7 @@ void CudaBondedUtilities::initialize(const System& system) {
     s<<CudaKernelSources::vectorOps;
     for (int i = 0; i < (int) prefixCode.size(); i++)
         s<<prefixCode[i];
-    s<<"extern \"C\" __global__ void computeBondedForces(unsigned long long* __restrict__ forceBuffer, mixed* __restrict__ energyBuffer, const real4* __restrict__ posq, int groups, real4 periodicBoxSize, real4 invPeriodicBoxSize, real4 periodicBoxVecX, real4 periodicBoxVecY, real4 periodicBoxVecZ";
+    s<<"extern \"C\" __global__ void computeBondedForces(unsigned long long* __restrict__ forceBuffer, mixed* __restrict__ energyBuffer, const real4* __restrict__ posq, int groups, real4 periodicBoxSize, real4 invPeriodicBoxSize, real4 periodicBoxVecX, real4 periodicBoxVecY, real4 periodicBoxVecZ, real time";
     for (int force = 0; force < numForces; force++) {
         for (int i = 0; i < (int) atomIndices[force].size(); i++) {
             int indexWidth = atomIndices[force][i].getElementSize()/4;
@@ -189,6 +189,7 @@ void CudaBondedUtilities::computeInteractions(int groups) {
         kernelArgs.push_back(context.getPeriodicBoxVecXPointer());
         kernelArgs.push_back(context.getPeriodicBoxVecYPointer());
         kernelArgs.push_back(context.getPeriodicBoxVecZPointer());
+        kernelArgs.push_back(NULL);
         for (int i = 0; i < (int) atomIndices.size(); i++)
             for (int j = 0; j < (int) atomIndices[i].size(); j++)
                 kernelArgs.push_back(&atomIndices[i][j].getDevicePointer());
@@ -200,5 +201,7 @@ void CudaBondedUtilities::computeInteractions(int groups) {
     if (!hasInteractions)
         return;
     kernelArgs[3] = &groups;
+    time = context.getTime();
+    kernelArgs[9] = &time;
     context.executeKernel(kernel, &kernelArgs[0], maxBonds);
 }

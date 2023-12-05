@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2008-2019 Stanford University and the Authors.      *
+ * Portions copyright (c) 2008-2023 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -231,6 +231,26 @@ void testAtan2() {
     ASSERT_EQUAL_TOL(atan2(positions[0][0], positions[0][1]), state.getPotentialEnergy(), 1e-5);
 }
 
+void testTimeDependence() {
+    System system;
+    system.addParticle(1.0);
+    CustomExternalForce* force = new CustomExternalForce("t*x");
+    force->addParticle(0);
+    system.addForce(force);
+    VerletIntegrator integrator(0.01);
+    Context context(system, integrator, platform);
+    vector<Vec3> positions(1);
+    positions[0] = Vec3(1.5, -2.1, 1.2);
+    context.setPositions(positions);
+    for (int i = 0; i < 10; i++) {
+        State state = context.getState(State::Positions | State::Forces | State::Energy);
+        double t = state.getTime();
+        ASSERT_EQUAL_TOL(t*state.getPositions()[0][0], state.getPotentialEnergy(), 1e-5);
+        ASSERT_EQUAL_VEC(Vec3(-t, 0, 0), state.getForces()[0], 1e-5);
+        integrator.step(1);
+    }
+}
+
 void runPlatformTests();
 
 int main(int argc, char* argv[]) {
@@ -242,6 +262,7 @@ int main(int argc, char* argv[]) {
         testZeroPeriodicDistance();
         testIllegalVariable();
         testAtan2();
+        testTimeDependence();
         runPlatformTests();
     }
     catch(const exception& e) {

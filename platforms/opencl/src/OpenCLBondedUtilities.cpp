@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2011-2022 Stanford University and the Authors.      *
+ * Portions copyright (c) 2011-2023 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -106,7 +106,7 @@ void OpenCLBondedUtilities::initialize(const System& system) {
     stringstream s;
     for (int i = 0; i < (int) prefixCode.size(); i++)
         s<<prefixCode[i];
-    s<<"__kernel void computeBondedForces(__global unsigned long* restrict forceBuffers, __global mixed* restrict energyBuffer, __global const real4* restrict posq, int groups, real4 periodicBoxSize, real4 invPeriodicBoxSize, real4 periodicBoxVecX, real4 periodicBoxVecY, real4 periodicBoxVecZ";
+    s<<"__kernel void computeBondedForces(__global unsigned long* restrict forceBuffers, __global mixed* restrict energyBuffer, __global const real4* restrict posq, int groups, real4 periodicBoxSize, real4 invPeriodicBoxSize, real4 periodicBoxVecX, real4 periodicBoxVecY, real4 periodicBoxVecZ, real time";
     for (int force = 0; force < numForces; force++) {
         string indexType = "uint"+(indexWidth[force] == 1 ? "" : context.intToString(indexWidth[force]));
         s<<", __global const "<<indexType<<"* restrict atomIndices"<<force;
@@ -183,7 +183,7 @@ void OpenCLBondedUtilities::computeInteractions(int groups) {
         kernel.setArg<cl::Buffer>(index++, context.getLongForceBuffer().getDeviceBuffer());
         kernel.setArg<cl::Buffer>(index++, context.getEnergyBuffer().getDeviceBuffer());
         kernel.setArg<cl::Buffer>(index++, context.getPosq().getDeviceBuffer());
-        index += 6;
+        index += 7;
         for (int j = 0; j < (int) atomIndices.size(); j++)
             kernel.setArg<cl::Buffer>(index++, atomIndices[j].getDeviceBuffer());
         for (int j = 0; j < (int) arguments.size(); j++)
@@ -198,6 +198,7 @@ void OpenCLBondedUtilities::computeInteractions(int groups) {
         kernel.setArg<mm_double4>(6, context.getPeriodicBoxVecXDouble());
         kernel.setArg<mm_double4>(7, context.getPeriodicBoxVecYDouble());
         kernel.setArg<mm_double4>(8, context.getPeriodicBoxVecZDouble());
+        kernel.setArg<double>(9, context.getTime());
     }
     else {
         kernel.setArg<mm_float4>(4, context.getPeriodicBoxSize());
@@ -205,6 +206,7 @@ void OpenCLBondedUtilities::computeInteractions(int groups) {
         kernel.setArg<mm_float4>(6, context.getPeriodicBoxVecX());
         kernel.setArg<mm_float4>(7, context.getPeriodicBoxVecY());
         kernel.setArg<mm_float4>(8, context.getPeriodicBoxVecZ());
+        kernel.setArg<float>(9, context.getTime());
     }
     context.executeKernel(kernel, maxBonds);
 }

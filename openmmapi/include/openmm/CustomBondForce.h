@@ -47,7 +47,7 @@ namespace OpenMM {
  *
  * To use this class, create a CustomBondForce object, passing an algebraic expression to the constructor
  * that defines the interaction energy between each pair of bonded particles.  The expression may depend on r, the distance
- * between the particles, as well as on any parameters you choose.  Then call addPerBondParameter() to define per-bond
+ * between the particles, and t, the current time, as well as on any parameters you choose.  Then call addPerBondParameter() to define per-bond
  * parameters, and addGlobalParameter() to define global parameters.  The values of per-bond parameters are specified as
  * part of the system definition, while values of global parameters may be modified during a simulation by calling Context::setParameter().
  * Finally, call addBond() once for each bond.  After a bond has been added, you can modify its parameters by calling setBondParameters().

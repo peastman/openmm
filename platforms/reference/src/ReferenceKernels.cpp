@@ -445,6 +445,7 @@ void ReferenceCalcCustomBondForceKernel::initialize(const System& system, const 
     }
     set<string> variables;
     variables.insert("r");
+    variables.insert("t");
     variables.insert(parameterNames.begin(), parameterNames.end());
     variables.insert(globalParameterNames.begin(), globalParameterNames.end());
     validateVariables(expression.getRootNode(), variables);
@@ -456,6 +457,7 @@ double ReferenceCalcCustomBondForceKernel::execute(ContextImpl& context, bool in
     vector<Vec3>& forceData = extractForces(context);
     double energy = 0;
     map<string, double> globalParameters;
+    globalParameters["t"] = context.getTime();
     for (auto& name : globalParameterNames)
         globalParameters[name] = context.getParameter(name);
     ixn->setGlobalParameters(globalParameters);
@@ -575,6 +577,7 @@ void ReferenceCalcCustomAngleForceKernel::initialize(const System& system, const
     }
     set<string> variables;
     variables.insert("theta");
+    variables.insert("t");
     variables.insert(parameterNames.begin(), parameterNames.end());
     variables.insert(globalParameterNames.begin(), globalParameterNames.end());
     validateVariables(expression.getRootNode(), variables);
@@ -586,6 +589,7 @@ double ReferenceCalcCustomAngleForceKernel::execute(ContextImpl& context, bool i
     vector<Vec3>& forceData = extractForces(context);
     double energy = 0;
     map<string, double> globalParameters;
+    globalParameters["t"] = context.getTime();
     for (auto& name : globalParameterNames)
         globalParameters[name] = context.getParameter(name);
     ixn->setGlobalParameters(globalParameters);
@@ -836,6 +840,7 @@ void ReferenceCalcCustomTorsionForceKernel::initialize(const System& system, con
     }
     set<string> variables;
     variables.insert("theta");
+    variables.insert("t");
     variables.insert(parameterNames.begin(), parameterNames.end());
     variables.insert(globalParameterNames.begin(), globalParameterNames.end());
     validateVariables(expression.getRootNode(), variables);
@@ -847,6 +852,7 @@ double ReferenceCalcCustomTorsionForceKernel::execute(ContextImpl& context, bool
     vector<Vec3>& forceData = extractForces(context);
     double energy = 0;
     map<string, double> globalParameters;
+    globalParameters["t"] = context.getTime();
     for (auto& name : globalParameterNames)
         globalParameters[name] = context.getParameter(name);
     ixn->setGlobalParameters(globalParameters);
@@ -1665,6 +1671,7 @@ void ReferenceCalcCustomExternalForceKernel::initialize(const System& system, co
     variables.insert("x");
     variables.insert("y");
     variables.insert("z");
+    variables.insert("t");
     variables.insert(parameterNames.begin(), parameterNames.end());
     variables.insert(globalParameterNames.begin(), globalParameterNames.end());
     validateVariables(expression.getRootNode(), variables);
@@ -1678,6 +1685,7 @@ double ReferenceCalcCustomExternalForceKernel::execute(ContextImpl& context, boo
     boxVectors = extractBoxVectors(context);
     double energy = 0;
     map<string, double> globalParameters;
+    globalParameters["t"] = context.getTime();
     for (auto& name : globalParameterNames)
         globalParameters[name] = context.getParameter(name);
     ixn->setGlobalParameters(globalParameters);

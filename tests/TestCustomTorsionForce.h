@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2008-2016 Stanford University and the Authors.      *
+ * Portions copyright (c) 2008-2023 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -259,6 +259,37 @@ void testEnergyParameterDerivatives() {
     }
 }
 
+void testTimeDependence() {
+    System system;
+    system.addParticle(1.0);
+    system.addParticle(1.0);
+    system.addParticle(1.0);
+    system.addParticle(1.0);
+    VerletIntegrator integrator(0.01);
+    CustomTorsionForce* torsions = new CustomTorsionForce("t*(theta-1)^2");
+    torsions->addTorsion(0, 1, 2, 3);
+    system.addForce(torsions);
+    vector<Vec3> positions(4);
+    positions[0] = Vec3(0, 2, 0);
+    positions[1] = Vec3(0, 0, 0);
+    positions[2] = Vec3(1, 0, 0);
+    positions[3] = Vec3(1, 1, 1);
+    Context context(system, integrator, platform);
+    context.setPositions(positions);
+    for (int i = 0; i < 10; i++) {
+        State state = context.getState(State::Positions | State::Forces | State::Energy);
+        Vec3 delta1 = state.getPositions()[0]-state.getPositions()[1];
+        Vec3 delta2 = state.getPositions()[2]-state.getPositions()[1];
+        Vec3 delta3 = state.getPositions()[2]-state.getPositions()[3];
+        Vec3 cross1 = delta1.cross(delta2);
+        Vec3 cross2 = delta2.cross(delta3);
+        double angle = acos(cross1.dot(cross2)/sqrt(cross1.dot(cross1)*cross2.dot(cross2)));
+        double t = state.getTime();
+        ASSERT_EQUAL_TOL(t*(angle-1)*(angle-1), state.getPotentialEnergy(), 1e-5);
+        integrator.step(1);
+    }
+}
+
 void runPlatformTests();
 
 int main(int argc, char* argv[]) {
@@ -269,6 +300,7 @@ int main(int argc, char* argv[]) {
         testIllegalVariable();
         testPeriodic();
         testEnergyParameterDerivatives();
+        testTimeDependence();
         runPlatformTests();
     }
     catch(const exception& e) {

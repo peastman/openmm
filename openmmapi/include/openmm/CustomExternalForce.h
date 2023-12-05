@@ -46,7 +46,7 @@ namespace OpenMM {
  *
  * To use this class, create a CustomExternalForce object, passing an algebraic expression to the constructor
  * that defines the potential energy of each affected particle.  The expression may depend on the particle's x, y, and
- * z coordinates, as well as on any parameters you choose.  Then call addPerParticleParameter() to define per-particle
+ * z coordinates and the current time t, as well as on any parameters you choose.  Then call addPerParticleParameter() to define per-particle
  * parameters, and addGlobalParameter() to define global parameters.  The values of per-particle parameters are specified as
  * part of the system definition, while values of global parameters may be modified during a simulation by calling Context::setParameter().
  * Finally, call addParticle() once for each particle that should be affected by the force.  After a particle has been added,

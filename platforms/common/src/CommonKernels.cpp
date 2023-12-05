@@ -302,6 +302,7 @@ void CommonCalcCustomBondForceKernel::initialize(const System& system, const Cus
 
     map<string, string> variables;
     variables["r"] = "r";
+    variables["t"] = "time";
     for (int i = 0; i < force.getNumPerBondParameters(); i++) {
         const string& name = force.getPerBondParameterName(i);
         variables[name] = "bondParams"+params->getParameterSuffix(i);
@@ -541,6 +542,7 @@ void CommonCalcCustomAngleForceKernel::initialize(const System& system, const Cu
 
     map<string, string> variables;
     variables["theta"] = "theta";
+    variables["t"] = "time";
     for (int i = 0; i < force.getNumPerAngleParameters(); i++) {
         const string& name = force.getPerAngleParameterName(i);
         variables[name] = "angleParams"+params->getParameterSuffix(i);
@@ -874,6 +876,7 @@ void CommonCalcCustomTorsionForceKernel::initialize(const System& system, const 
 
     map<string, string> variables;
     variables["theta"] = "theta";
+    variables["t"] = "time";
     for (int i = 0; i < force.getNumPerTorsionParameters(); i++) {
         const string& name = force.getPerTorsionParameterName(i);
         variables[name] = "torsionParams"+params->getParameterSuffix(i);
@@ -1162,6 +1165,7 @@ void CommonCalcCustomExternalForceKernel::initialize(const System& system, const
     variables["x"] = "pos1.x";
     variables["y"] = "pos1.y";
     variables["z"] = "pos1.z";
+    variables["t"] = "time";
     for (int i = 0; i < force.getNumPerParticleParameters(); i++) {
         const string& name = force.getPerParticleParameterName(i);
         variables[name] = "particleParams"+params->getParameterSuffix(i);
