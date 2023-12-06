@@ -1,5 +1,5 @@
 
-/* Portions copyright (c) 2009-2016 Stanford University and Simbios.
+/* Portions copyright (c) 2009-2023 Stanford University and Simbios.
  * Contributors: Peter Eastman
  *
  * Permission is hereby granted, free of charge, to any person obtaining
@@ -121,7 +121,7 @@ class ReferenceCustomCompoundBondIxn : public ReferenceBondIxn {
 
       void calculatePairIxn(std::vector<OpenMM::Vec3>& atomCoordinates, std::vector<std::vector<double> >& bondParameters,
                             const std::map<std::string, double>& globalParameters,
-                            std::vector<OpenMM::Vec3>& forces, double* totalEnergy, double* energyParamDerivs);
+                            std::vector<OpenMM::Vec3>& forces, double* totalEnergy, double* energyParamDerivs, double time);
 
 // ---------------------------------------------------------------------------------------
 

@@ -414,6 +414,36 @@ void testEnergyParameterDerivatives() {
     }
 }
 
+void testTimeDependence() {
+    System system;
+    for (int i = 0; i < 4; i++)
+        system.addParticle(1.0);
+    VerletIntegrator integrator(0.01);
+    CustomCentroidBondForce* bonds = new CustomCentroidBondForce(2, "t*(distance(g1,g2)-1)^2");
+    bonds->addGroup({0, 1});
+    bonds->addGroup({2, 3});
+    bonds->addBond({0, 1});
+    system.addForce(bonds);
+    vector<Vec3> positions(4);
+    positions[0] = Vec3(0, 2, 0);
+    positions[1] = Vec3(0, 0, 0);
+    positions[2] = Vec3(1, 0, 0);
+    positions[3] = Vec3(1, 1, 0);
+    Context context(system, integrator, platform);
+    context.setPositions(positions);
+    for (int i = 0; i < 10; i++) {
+        State state = context.getState(State::Positions | State::Forces | State::Energy);
+        Vec3 pos1 = (state.getPositions()[0]+state.getPositions()[1])/2;
+        Vec3 pos2 = (state.getPositions()[2]+state.getPositions()[3])/2;
+        Vec3 delta = pos2-pos1;
+        double r = sqrt(delta.dot(delta));
+        double t = state.getTime();
+        ASSERT_EQUAL_TOL(t*(r-1)*(r-1), state.getPotentialEnergy(), 1e-5);
+        ASSERT_EQUAL_VEC((0.5*2*t*(r-1)/r)*delta, state.getForces()[0], 1e-5);
+        integrator.step(1);
+    }
+}
+
 void runPlatformTests();
 
 int main(int argc, char* argv[]) {
@@ -427,6 +457,7 @@ int main(int argc, char* argv[]) {
         testPeriodic(true);
         testPeriodic(false);
         testEnergyParameterDerivatives();
+        testTimeDependence();
         runPlatformTests();
     }
     catch(const exception& e) {

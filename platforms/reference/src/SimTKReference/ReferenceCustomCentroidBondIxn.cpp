@@ -1,5 +1,5 @@
 
-/* Portions copyright (c) 2009-2018 Stanford University and Simbios.
+/* Portions copyright (c) 2009-2023 Stanford University and Simbios.
  * Contributors: Peter Eastman
  *
  * Permission is hereby granted, free of charge, to any person obtaining
@@ -76,7 +76,7 @@ void ReferenceCustomCentroidBondIxn::setPeriodic(OpenMM::Vec3* vectors) {
 
 void ReferenceCustomCentroidBondIxn::calculatePairIxn(vector<Vec3>& atomCoordinates, vector<vector<double> >& bondParameters,
                                              const map<string, double>& globalParameters, vector<Vec3>& forces,
-                                             double* totalEnergy, double* energyParamDerivs) {
+                                             double* totalEnergy, double* energyParamDerivs, double time) {
 
     // First compute the center of each group.
 
@@ -89,6 +89,7 @@ void ReferenceCustomCentroidBondIxn::calculatePairIxn(vector<Vec3>& atomCoordina
 
     // Compute the forces on groups.
 
+    expressionSet.setVariable(expressionSet.getVariableIndex("t"), time);
     for (auto& param : globalParameters)
         expressionSet.setVariable(expressionSet.getVariableIndex(param.first), param.second);
     vector<Vec3> groupForces(numGroups);

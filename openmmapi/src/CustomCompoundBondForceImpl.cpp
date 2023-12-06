@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2008-2021 Stanford University and the Authors.      *
+ * Portions copyright (c) 2008-2023 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -160,6 +160,7 @@ ParsedExpression CustomCompoundBondForceImpl::prepareExpression(const CustomComp
         variables.insert(force.getGlobalParameterName(i));
     for (int i = 0; i < force.getNumPerBondParameters(); i++)
         variables.insert(force.getPerBondParameterName(i));
+    variables.insert("t");
     return ParsedExpression(replaceFunctions(expression.getRootNode(), atoms, functions, variables)).optimize();
 }
 

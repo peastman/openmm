@@ -65,7 +65,7 @@ KERNEL void computeGroupCenters(int numParticleGroups, GLOBAL const real4* RESTR
  * Compute the forces on groups based on the bonds.
  */
 KERNEL void computeGroupForces(int numParticleGroups, GLOBAL mm_ulong* RESTRICT groupForce, GLOBAL mixed* RESTRICT energyBuffer, GLOBAL const real4* RESTRICT centerPositions,
-        GLOBAL const int* RESTRICT bondGroups, real4 periodicBoxSize, real4 invPeriodicBoxSize, real4 periodicBoxVecX, real4 periodicBoxVecY, real4 periodicBoxVecZ
+        GLOBAL const int* RESTRICT bondGroups, real4 periodicBoxSize, real4 invPeriodicBoxSize, real4 periodicBoxVecX, real4 periodicBoxVecY, real4 periodicBoxVecZ, real time
         EXTRA_ARGS) {
     mixed energy = 0;
     INIT_PARAM_DERIVS

@@ -1937,7 +1937,7 @@ double ReferenceCalcCustomCentroidBondForceKernel::execute(ContextImpl& context,
         ixn->setPeriodic(boxVectors);
     }
     vector<double> energyParamDerivValues(energyParamDerivNames.size()+1, 0.0);
-    ixn->calculatePairIxn(posData, bondParamArray, globalParameters, forceData, includeEnergy ? &energy : NULL, &energyParamDerivValues[0]);
+    ixn->calculatePairIxn(posData, bondParamArray, globalParameters, forceData, includeEnergy ? &energy : NULL, &energyParamDerivValues[0], context.getTime());
     map<string, double>& energyParamDerivs = extractEnergyParameterDerivatives(context);
     for (int i = 0; i < energyParamDerivNames.size(); i++)
         energyParamDerivs[energyParamDerivNames[i]] += energyParamDerivValues[i];
@@ -2053,7 +2053,7 @@ double ReferenceCalcCustomCompoundBondForceKernel::execute(ContextImpl& context,
         ixn->setPeriodic(boxVectors);
     }
     vector<double> energyParamDerivValues(energyParamDerivNames.size()+1, 0.0);
-    ixn->calculatePairIxn(posData, bondParamArray, globalParameters, forceData, includeEnergy ? &energy : NULL, &energyParamDerivValues[0]);
+    ixn->calculatePairIxn(posData, bondParamArray, globalParameters, forceData, includeEnergy ? &energy : NULL, &energyParamDerivValues[0], context.getTime());
     map<string, double>& energyParamDerivs = extractEnergyParameterDerivatives(context);
     for (int i = 0; i < energyParamDerivNames.size(); i++)
         energyParamDerivs[energyParamDerivNames[i]] += energyParamDerivValues[i];

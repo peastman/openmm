@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2012-2021 Stanford University and the Authors.      *
+ * Portions copyright (c) 2012-2023 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -483,6 +483,30 @@ void testEnergyParameterDerivatives() {
     }
 }
 
+void testTimeDependence() {
+    System system;
+    system.addParticle(1.0);
+    system.addParticle(1.0);
+    VerletIntegrator integrator(0.01);
+    CustomCompoundBondForce* bonds = new CustomCompoundBondForce(2, "t*(distance(p1,p2)-1)^2");
+    bonds->addBond({0, 1});
+    system.addForce(bonds);
+    vector<Vec3> positions(2);
+    positions[0] = Vec3(0, 2, 0);
+    positions[1] = Vec3(0, 0, 0);
+    Context context(system, integrator, platform);
+    context.setPositions(positions);
+    for (int i = 0; i < 10; i++) {
+        State state = context.getState(State::Positions | State::Forces | State::Energy);
+        Vec3 delta = state.getPositions()[1]-state.getPositions()[0];
+        double r = sqrt(delta.dot(delta));
+        double t = state.getTime();
+        ASSERT_EQUAL_TOL(t*(r-1)*(r-1), state.getPotentialEnergy(), 1e-5);
+        ASSERT_EQUAL_VEC((2*t*(r-1)/r)*delta, state.getForces()[0], 1e-5);
+        integrator.step(1);
+    }
+}
+
 void runPlatformTests();
 
 int main(int argc, char* argv[]) {
@@ -498,6 +522,7 @@ int main(int argc, char* argv[]) {
         testPeriodic(true);
         testPeriodic(false);
         testEnergyParameterDerivatives();
+        testTimeDependence();
         runPlatformTests();
     }
     catch(const exception& e) {

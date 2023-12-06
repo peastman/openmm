@@ -1,5 +1,5 @@
 
-/* Portions copyright (c) 2009-2016 Stanford University and Simbios.
+/* Portions copyright (c) 2009-2023 Stanford University and Simbios.
  * Contributors: Peter Eastman
  *
  * Permission is hereby granted, free of charge, to any person obtaining
@@ -99,7 +99,8 @@ void ReferenceCustomCompoundBondIxn::setPeriodic(OpenMM::Vec3* vectors) {
 
 void ReferenceCustomCompoundBondIxn::calculatePairIxn(vector<Vec3>& atomCoordinates, vector<vector<double> >& bondParameters,
                                              const map<string, double>& globalParameters, vector<Vec3>& forces,
-                                             double* totalEnergy, double* energyParamDerivs) {
+                                             double* totalEnergy, double* energyParamDerivs, double time) {
+    expressionSet.setVariable(expressionSet.getVariableIndex("t"), time);
     for (auto& param : globalParameters)
         expressionSet.setVariable(expressionSet.getVariableIndex(param.first), param.second);
     int numBonds = bondAtoms.size();

@@ -1326,6 +1326,7 @@ void CommonCalcCustomCompoundBondForceKernel::initialize(const System& system, c
         variables["y"+index] = "pos"+index+".y";
         variables["z"+index] = "pos"+index+".z";
     }
+    variables["t"] = "time";
     for (int i = 0; i < force.getNumPerBondParameters(); i++) {
         const string& name = force.getPerBondParameterName(i);
         variables[name] = "bondParams"+params->getParameterSuffix(i);
@@ -1587,6 +1588,7 @@ void CommonCalcCustomCentroidBondForceKernel::initialize(const System& system, c
         variables["y"+index] = "pos"+index+".y";
         variables["z"+index] = "pos"+index+".z";
     }
+    variables["t"] = "time";
     for (int i = 0; i < force.getNumPerBondParameters(); i++) {
         const string& name = force.getPerBondParameterName(i);
         variables[name] = "bondParams"+params->getParameterSuffix(i);
@@ -1683,8 +1685,8 @@ void CommonCalcCustomCentroidBondForceKernel::initialize(const System& system, c
     groupForcesKernel->addArg(); // Energy buffer hasn't been created yet
     groupForcesKernel->addArg(centerPositions);
     groupForcesKernel->addArg(bondGroups);
-    for (int i = 0; i < 5; i++)
-        groupForcesKernel->addArg(); // Periodic box information will be set just before it is executed.
+    for (int i = 0; i < 6; i++)
+        groupForcesKernel->addArg(); // Periodic box information and time will be set just before it is executed.
     if (needEnergyParamDerivs)
         groupForcesKernel->addArg(); // Deriv buffer hasn't been created yet.
     for (auto& function : tabulatedFunctionArrays)
@@ -1720,8 +1722,12 @@ double CommonCalcCustomCentroidBondForceKernel::execute(ContextImpl& context, bo
     computeCentersKernel->execute(32*numGroups);
     groupForcesKernel->setArg(2, cc.getEnergyBuffer());
     setPeriodicBoxArgs(cc, groupForcesKernel, 5);
+    if (cc.getUseDoublePrecision())
+        groupForcesKernel->setArg(10, cc.getTime());
+    else
+        groupForcesKernel->setArg(10, (float) cc.getTime());
     if (needEnergyParamDerivs)
-        groupForcesKernel->setArg(10, cc.getEnergyParamDerivBuffer());
+        groupForcesKernel->setArg(11, cc.getEnergyParamDerivBuffer());
     groupForcesKernel->execute(numBonds);
     applyForcesKernel->setArg(5, cc.getLongForceBuffer());
     applyForcesKernel->execute(32*numGroups);
