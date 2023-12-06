@@ -201,7 +201,11 @@ void CudaBondedUtilities::computeInteractions(int groups) {
     if (!hasInteractions)
         return;
     kernelArgs[3] = &groups;
-    time = context.getTime();
-    kernelArgs[9] = &time;
+    double timed = context.getTime();
+    float timef = (float) timed;
+    if (context.getUseDoublePrecision())
+        kernelArgs[9] = &timed;
+    else
+        kernelArgs[9] = &timef;
     context.executeKernel(kernel, &kernelArgs[0], maxBonds);
 }
