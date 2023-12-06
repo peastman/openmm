@@ -44,6 +44,7 @@ private:
     std::vector<Lepton::CompiledExpression> paramDerivExpressions;
     std::vector<double> globalValues, cvValues;
     std::vector<Lepton::CustomFunction*> tabulatedFunctions;
+    double time;
 
 public:
     /**
@@ -71,10 +72,11 @@ public:
      * @param forces             the forces are added to this
      * @param totalEnergy        the energy is added to this
      * @param energyParamDerivs  parameter derivatives are added to this
+     * @param time               the current time
      */
    void calculateIxn(ContextImpl& innerContext, std::vector<OpenMM::Vec3>& atomCoordinates,
                      const std::map<std::string, double>& globalParameters,
-                     std::vector<OpenMM::Vec3>& forces, double* totalEnergy, std::map<std::string, double>& energyParamDerivs);
+                     std::vector<OpenMM::Vec3>& forces, double* totalEnergy, std::map<std::string, double>& energyParamDerivs, double time);
 };
 
 } // namespace OpenMM

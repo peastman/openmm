@@ -2217,7 +2217,7 @@ double ReferenceCalcCustomCVForceKernel::execute(ContextImpl& context, ContextIm
     for (auto& name : globalParameterNames)
         globalParameters[name] = context.getParameter(name);
     map<string, double>& energyParamDerivs = extractEnergyParameterDerivatives(context);
-    ixn->calculateIxn(innerContext, posData, globalParameters, forceData, includeEnergy ? &energy : NULL, energyParamDerivs);
+    ixn->calculateIxn(innerContext, posData, globalParameters, forceData, includeEnergy ? &energy : NULL, energyParamDerivs, context.getTime());
     return energy;
 }
 

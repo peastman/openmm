@@ -5186,6 +5186,7 @@ void CommonCalcCustomCVForceKernel::initialize(const System& system, const Custo
     globalValues.resize(globalParameterNames.size());
     cvValues.resize(numCVs);
     map<string, double*> variableLocations;
+    variableLocations["t"] = &time;
     for (int i = 0; i < globalParameterNames.size(); i++)
         variableLocations[globalParameterNames[i]] = &globalValues[i];
     for (int i = 0; i < numCVs; i++)
@@ -5284,6 +5285,7 @@ double CommonCalcCustomCVForceKernel::execute(ContextImpl& context, ContextImpl&
     ContextSelector selector(cc);
     for (int i = 0; i < globalParameterNames.size(); i++)
         globalValues[i] = context.getParameter(globalParameterNames[i]);
+    time = cc.getTime();
     double energy = energyExpression.evaluate();
     for (int i = 0; i < numCVs; i++) {
         double dEdV = variableDerivExpressions[i].evaluate();

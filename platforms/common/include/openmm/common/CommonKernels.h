@@ -952,6 +952,7 @@ private:
     class TabulatedFunctionWrapper;
     ComputeContext& cc;
     bool hasInitializedListeners;
+    double time;
     Lepton::CompiledExpression energyExpression;
     std::vector<std::string> variableNames, paramDerivNames, globalParameterNames;
     std::vector<Lepton::CompiledExpression> variableDerivExpressions;

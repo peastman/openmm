@@ -66,6 +66,7 @@ namespace OpenMM {
  * by the names of whichever groups you want to calculate the distance between).</li>
  * <li>angle(g1, g2, g3): the angle formed by the centers of the three specified groups.</li>
  * <li>dihedral(g1, g2, g3, g4): the dihedral angle formed by the centers of the four specified groups.</li>
+ * <li>t: the current time</li>
  * </ul>
  *
  * The expression also may involve tabulated functions, and may depend on arbitrary global and per-bond parameters.

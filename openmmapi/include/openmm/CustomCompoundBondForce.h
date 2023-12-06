@@ -58,6 +58,7 @@ namespace OpenMM {
  * of whichever particles you want to calculate the distance between).</li>
  * <li>angle(p1, p2, p3): the angle formed by the three specified particles.</li>
  * <li>dihedral(p1, p2, p3, p4): the dihedral angle formed by the four specified particles, guaranteed to be in the range [-pi,+pi].</li>
+ * <li>t: the current time</li>
  * </ul>
  *
  * The expression also may involve tabulated functions, and may depend on arbitrary

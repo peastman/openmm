@@ -89,6 +89,7 @@ ReferenceCustomCVForce::ReferenceCustomCVForce(const CustomCVForce& force) {
     globalValues.resize(globalParameterNames.size());
     cvValues.resize(numCVs);
     map<string, double*> variableLocations;
+    variableLocations["t"] = &time;
     for (int i = 0; i < globalParameterNames.size(); i++)
         variableLocations[globalParameterNames[i]] = &globalValues[i];
     for (int i = 0; i < numCVs; i++)
@@ -125,7 +126,7 @@ ReferenceCustomCVForce::~ReferenceCustomCVForce() {
 
 void ReferenceCustomCVForce::calculateIxn(ContextImpl& innerContext, vector<Vec3>& atomCoordinates,
                                           const map<string, double>& globalParameters, vector<Vec3>& forces,
-                                          double* totalEnergy, map<string, double>& energyParamDerivs) {
+                                          double* totalEnergy, map<string, double>& energyParamDerivs, double time) {
     // Compute the collective variables, and their derivatives with respect to particle positions.
     
     int numCVs = variableNames.size();
@@ -141,7 +142,8 @@ void ReferenceCustomCVForce::calculateIxn(ContextImpl& innerContext, vector<Vec3
     }
     
     // Compute the energy and forces.
-    
+
+    this->time = time;
     for (int i = 0; i < globalParameterNames.size(); i++)
         globalValues[i] = globalParameters.at(globalParameterNames[i]);
     int numParticles = atomCoordinates.size();

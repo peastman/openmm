@@ -45,7 +45,7 @@ namespace OpenMM {
  * you define a set of collective variables (scalar valued functions that depend on the
  * particle positions), and an algebraic expression for the energy as a function of the
  * collective variables.  The expression also may involve tabulated functions, and may
- * depend on arbitrary global parameters.
+ * depend on arbitrary global parameters and the current time t.
  * 
  * Each collective variable is defined by a Force object.  The Force's potential energy
  * is computed, and that becomes the value of the variable.  This provides enormous
