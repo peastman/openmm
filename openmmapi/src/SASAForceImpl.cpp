@@ -1,6 +1,3 @@
-#ifndef OPENMM_H_
-#define OPENMM_H_
-
 /* -------------------------------------------------------------------------- *
  *                                   OpenMM                                   *
  * -------------------------------------------------------------------------- *
@@ -9,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2009-2021 Stanford University and the Authors.      *
+ * Portions copyright (c) 2024 Stanford University and the Authors.           *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -32,56 +29,51 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
  * -------------------------------------------------------------------------- */
 
-#include "openmm/AndersenThermostat.h"
-#include "openmm/BrownianIntegrator.h"
-#include "openmm/CMAPTorsionForce.h"
-#include "openmm/CMMotionRemover.h"
-#include "openmm/CompoundIntegrator.h"
-#include "openmm/CustomBondForce.h"
-#include "openmm/CustomCentroidBondForce.h"
-#include "openmm/CustomCompoundBondForce.h"
-#include "openmm/CustomAngleForce.h"
-#include "openmm/CustomTorsionForce.h"
-#include "openmm/CustomExternalForce.h"
-#include "openmm/CustomCVForce.h"
-#include "openmm/CustomGBForce.h"
-#include "openmm/CustomHbondForce.h"
-#include "openmm/CustomIntegrator.h"
-#include "openmm/CustomManyParticleForce.h"
-#include "openmm/CustomNonbondedForce.h"
-#include "openmm/Force.h"
-#include "openmm/GayBerneForce.h"
-#include "openmm/GBSAOBCForce.h"
-#include "openmm/HarmonicAngleForce.h"
-#include "openmm/HarmonicBondForce.h"
-#include "openmm/Integrator.h"
-#include "openmm/LangevinIntegrator.h"
-#include "openmm/LangevinMiddleIntegrator.h"
-#include "openmm/LocalEnergyMinimizer.h"
-#include "openmm/MonteCarloAnisotropicBarostat.h"
-#include "openmm/MonteCarloBarostat.h"
-#include "openmm/MonteCarloFlexibleBarostat.h"
-#include "openmm/MonteCarloMembraneBarostat.h"
-#include "openmm/NonbondedForce.h"
-#include "openmm/Context.h"
 #include "openmm/OpenMMException.h"
-#include "openmm/PeriodicTorsionForce.h"
-#include "openmm/RBTorsionForce.h"
-#include "openmm/RMSDForce.h"
-#include "openmm/SASAForce.h"
-#include "openmm/State.h"
-#include "openmm/System.h"
-#include "openmm/TabulatedFunction.h"
-#include "openmm/Units.h"
-#include "openmm/VariableLangevinIntegrator.h"
-#include "openmm/VariableVerletIntegrator.h"
-#include "openmm/Vec3.h"
-#include "openmm/VerletIntegrator.h"
-#include "openmm/NoseHooverIntegrator.h"
-#include "openmm/NoseHooverChain.h"
-#include "openmm/VirtualSite.h"
-#include "openmm/Platform.h"
-#include "openmm/serialization/XmlSerializer.h"
-#include "openmm/ATMForce.h"
+#include "openmm/internal/SASAForceImpl.h"
+#include "openmm/internal/ContextImpl.h"
+#include "openmm/kernels.h"
+#include <vector>
 
-#endif /*OPENMM_H_*/
+using namespace OpenMM;
+using namespace std;
+
+SASAForceImpl::SASAForceImpl(const SASAForce& owner) : owner(owner) {
+    forceGroup = owner.getForceGroup();
+}
+
+void SASAForceImpl::initialize(ContextImpl& context) {
+    kernel = context.getPlatform().createKernel(CalcSASAForceKernel::Name(), context);
+    if (owner.getNumParticles() != context.getSystem().getNumParticles())
+        throw OpenMMException("SASAForce must have exactly as many particles as the System it belongs to.");
+    for (int i = 0; i < owner.getNumParticles(); i++) {
+        double radius;
+        owner.getParticleParameters(i, radius);
+        if (radius <= 0)
+            throw OpenMMException("SASAForce: particle radius must be positive");
+    }
+    kernel.getAs<CalcSASAForceKernel>().initialize(context.getSystem(), owner);
+}
+
+double SASAForceImpl::calcForcesAndEnergy(ContextImpl& context, bool includeForces, bool includeEnergy, int groups) {
+    if ((groups&(1<<forceGroup)) != 0)
+        return kernel.getAs<CalcSASAForceKernel>().execute(context, includeForces, includeEnergy);
+    return 0.0;
+}
+
+map<string, double> SASAForceImpl::getDefaultParameters() {
+    map<string, double> parameters;
+    parameters[SASAForce::EnergyScale()] = getOwner().getDefaultEnergyScale();
+    return parameters;
+}
+
+vector<string> SASAForceImpl::getKernelNames() {
+    vector<string> names;
+    names.push_back(CalcSASAForceKernel::Name());
+    return names;
+}
+
+void SASAForceImpl::updateParametersInContext(ContextImpl& context) {
+    kernel.getAs<CalcSASAForceKernel>().copyParametersToContext(context, owner);
+    context.systemChanged();
+}
