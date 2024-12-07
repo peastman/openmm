@@ -1700,7 +1700,6 @@ public:
     virtual double execute(ContextImpl& context, bool includeForces, bool includeEnergy) = 0;
 };
 
-
 /**
  * This kernel is invoked by SASAForce to calculate the forces acting on the system and the energy of the system.
  */

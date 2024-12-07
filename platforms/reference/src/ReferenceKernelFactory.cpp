@@ -86,6 +86,8 @@ KernelImpl* ReferenceKernelFactory::createKernelImpl(std::string name, const Pla
         return new ReferenceCalcCustomCPPForceKernel(name, platform);
     if (name == CalcRMSDForceKernel::Name())
         return new ReferenceCalcRMSDForceKernel(name, platform);
+    if (name == CalcSASAForceKernel::Name())
+        return new ReferenceCalcSASAForceKernel(name, platform);
     if (name == CalcCustomManyParticleForceKernel::Name())
         return new ReferenceCalcCustomManyParticleForceKernel(name, platform);
     if (name == CalcGayBerneForceKernel::Name())

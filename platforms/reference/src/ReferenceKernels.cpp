@@ -61,6 +61,7 @@
 #include "ReferenceProperDihedralBond.h"
 #include "ReferenceRbDihedralBond.h"
 #include "ReferenceRMSDForce.h"
+#include "ReferenceSASAForce.h"
 #include "ReferenceTabulatedFunction.h"
 #include "ReferenceVariableStochasticDynamics.h"
 #include "ReferenceVariableVerletDynamics.h"
@@ -3040,4 +3041,25 @@ double ReferenceCalcCustomCPPForceKernel::execute(ContextImpl& context, bool inc
         for (int i = 0; i < forces.size(); i++)
             forceData[i] += forces[i];
     return energy;
+}
+
+void ReferenceCalcSASAForceKernel::initialize(const System& system, const SASAForce& force) {
+    radius.resize(force.getNumParticles());
+    for (int i = 0; i < force.getNumParticles(); i++)
+        force.getParticleParameters(i, radius[i]);
+}
+
+double ReferenceCalcSASAForceKernel::execute(ContextImpl& context, bool includeForces, bool includeEnergy) {
+    vector<Vec3>& posData = extractPositions(context);
+    vector<Vec3>& forceData = extractForces(context);
+    double scale = context.getParameter(SASAForce::EnergyScale());
+    ReferenceSASAForce sasa;
+    return sasa.calculateIxn(posData, forceData, radius, scale);
+}
+
+void ReferenceCalcSASAForceKernel::copyParametersToContext(ContextImpl& context, const SASAForce& force) {
+    if (radius.size() != force.getNumParticles())
+        throw OpenMMException("updateParametersInContext: The number of particles has changed");
+    for (int i = 0; i < force.getNumParticles(); i++)
+        force.getParticleParameters(i, radius[i]);
 }
