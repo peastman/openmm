@@ -23,6 +23,8 @@
 
 #include "ReferenceSASAForce.h"
 #include <bitset>
+#include <cmath>
+#include <cstring>
 #include <iostream>
 #include <stack>
 #include "alphamol/Atoms.h"

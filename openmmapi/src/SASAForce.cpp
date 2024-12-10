@@ -37,8 +37,7 @@
 
 using namespace OpenMM;
 
-SASAForce::SASAForce(double defaultEnergyScale) {
-    setDefaultEnergyScale(defaultEnergyScale);
+SASAForce::SASAForce(double defaultEnergyScale) : defaultEnergyScale(defaultEnergyScale) {
 }
 
 double SASAForce::getDefaultEnergyScale() const {
