@@ -59,6 +59,7 @@ namespace OpenMM {
  * .. code-block:: cpp
  *
  *    context.setParameter(SASAForce::EnergyScale(), scaleFactor);
+ * \endverbatim
  */
 
 class OPENMM_EXPORT SASAForce : public Force {
