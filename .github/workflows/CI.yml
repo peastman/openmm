@@ -675,3 +675,79 @@ jobs:
           ((exitcode+=$?))
           echo "::endgroup::"
           exit $exitcode
+
+  gpu:
+    runs-on: ["self-hosted", "cuda"]
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux GPU OpenCL
+            python-version: "3.13"
+            env: ubuntu-arm
+            OPENCL: true
+            CUDA: false
+            CMAKE_FLAGS: |
+              -DOPENMM_BUILD_CUDA_LIB=OFF \
+              -DOPENMM_BUILD_CPU_LIB=OFF \
+              -DOPENMM_BUILD_PYTHON_WRAPPERS=OFF \
+              -DOPENMM_BUILD_REFERENCE_TESTS=OFF \
+              -DOPENMM_BUILD_SERIALIZATION_TESTS=OFF \
+              -DOPENMM_BUILD_C_AND_FORTRAN_WRAPPERS=OFF \
+              -DOPENMM_BUILD_EXAMPLES=OFF \
+
+          - name: Linux GPU CUDA
+            python-version: "3.13"
+            env: ubuntu-arm
+            OPENCL: false
+            CUDA: true
+            CMAKE_FLAGS: |
+              -DOPENMM_BUILD_OPENCL_LIB=OFF \
+              -DOPENMM_BUILD_CPU_LIB=OFF \
+              -DOPENMM_BUILD_PYTHON_WRAPPERS=OFF \
+              -DOPENMM_BUILD_REFERENCE_TESTS=OFF \
+              -DOPENMM_BUILD_SERIALIZATION_TESTS=OFF \
+              -DOPENMM_BUILD_C_AND_FORTRAN_WRAPPERS=OFF \
+              -DOPENMM_BUILD_EXAMPLES=OFF \
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: conda-incubator/setup-miniconda@v4
+        name: "Prepare base dependencies"
+        with:
+          python-version: ${{ matrix.python-version }}
+          activate-environment: build
+          environment-file: devtools/ci/gh-actions/conda-envs/build-${{ matrix.env }}.yml
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          use-mamba: true
+
+      - name: "Configure build with CMake"
+        shell: bash -l {0}
+        run: |
+          mkdir build
+          cd build
+          cmake .. \
+            -DCMAKE_INSTALL_PREFIX=${CONDA_PREFIX} \
+            ${{ matrix.CMAKE_FLAGS }}
+
+      - name: "Build OpenMM"
+        shell: bash -l {0}
+        run: |
+          cd build
+          make -j8 install
+
+      - name: "Test OpenMM"
+        shell: bash -l {0}
+        run: |
+          cd build
+          python ../devtools/run-ctest.py --parallel 3 --timeout 600 --job-duration 900 --attempts 3
+          test -f ${CONDA_PREFIX}/lib/libOpenMM.so
+          if [[ ${{ matrix.OPENCL }} == true ]]; then
+            test -f ${CONDA_PREFIX}/lib/plugins/libOpenMMOpenCL.so
+          fi
+          if [[ ${{ matrix.CUDA }} == true ]]; then
+            test -f ${CONDA_PREFIX}/lib/plugins/libOpenMMCUDA.so
+          fi
