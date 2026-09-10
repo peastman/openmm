@@ -358,6 +358,11 @@ OpenCLContext::OpenCLContext(const System& system, int platformIndex, int device
         }
         longForceBuffer.initialize<cl_long>(*this, 3*paddedNumAtoms, "longForceBuffer");
         posCellOffsets.resize(paddedNumAtoms, mm_int4(0, 0, 0, 0));
+        nonbondedAtomOrder.initialize<cl_int>(*this, numAtoms, "nonbondedAtomOrder");
+        vector<int> orderVec(numAtoms);
+        for (int i = 0; i < numAtoms; i++)
+            orderVec[i] = i;
+        nonbondedAtomOrder.upload(orderVec);
         atomIndexDevice.initialize<cl_int>(*this, paddedNumAtoms, "atomIndexDevice");
         atomIndex.resize(paddedNumAtoms);
         for (int i = 0; i < paddedNumAtoms; ++i)
@@ -543,10 +548,22 @@ void OpenCLContext::initialize() {
         energyBuffer.initialize<cl_float>(*this, energyBufferSize, "energyBuffer");
         energySum.initialize<cl_float>(*this, numComputeUnits, "energySum");
     }
+    useReordering = (numAtoms > 1 && getNonbondedUtilities().getUseCutoff());
+    if (useReordering) {
+        if (useDoublePrecision)
+            posqReordered.initialize<mm_double4>(*this, paddedNumAtoms, "posqReordered");
+        else
+            posqReordered.initialize<mm_float4>(*this, paddedNumAtoms, "posqReordered");
+        longForceBufferReordered.initialize<cl_long>(*this, 3*paddedNumAtoms, "longForceBufferReordered");
+        addAutoclearBuffer(longForceBufferReordered);
+    }
     reduceForcesKernel.setArg<cl::Buffer>(0, longForceBuffer.getDeviceBuffer());
-    reduceForcesKernel.setArg<cl::Buffer>(1, forceBuffers.getDeviceBuffer());
-    reduceForcesKernel.setArg<cl_int>(2, paddedNumAtoms);
-    reduceForcesKernel.setArg<cl_int>(3, numForceBuffers);
+    reduceForcesKernel.setArg<cl::Buffer>(1, getLongForceBufferReordered().getDeviceBuffer());
+    reduceForcesKernel.setArg<cl::Buffer>(2, getNonbondedAtomOrder().getDeviceBuffer());
+    reduceForcesKernel.setArg<cl::Buffer>(3, forceBuffers.getDeviceBuffer());
+    reduceForcesKernel.setArg<cl_int>(4, paddedNumAtoms);
+    reduceForcesKernel.setArg<cl_int>(5, numForceBuffers);
+    reduceForcesKernel.setArg<cl_int>(6, useReordering);
     addAutoclearBuffer(longForceBuffer);
     addAutoclearBuffer(forceBuffers);
     addAutoclearBuffer(energyBuffer);
@@ -573,6 +590,7 @@ void OpenCLContext::initialize() {
     velm.upload(pinnedMemory);
     findMoleculeGroups();
     nonbonded->initialize(system);
+    ComputeContext::initialize();
 }
 
 void OpenCLContext::initializeContexts() {
@@ -893,8 +911,7 @@ void OpenCLContext::setCharges(const vector<double>& charges) {
     chargeBuffer.upload(c, true);
     setChargesKernel.setArg<cl::Buffer>(0, chargeBuffer.getDeviceBuffer());
     setChargesKernel.setArg<cl::Buffer>(1, posq.getDeviceBuffer());
-    setChargesKernel.setArg<cl::Buffer>(2, atomIndexDevice.getDeviceBuffer());
-    setChargesKernel.setArg<cl_int>(3, numAtoms);
+    setChargesKernel.setArg<cl_int>(2, numAtoms);
     executeKernel(setChargesKernel, numAtoms);
 }
 

@@ -260,6 +260,14 @@ public:
         return posqCorrection;
     }
     /**
+     * Get the array which contains the position (the xyz components) and charge (the w component) of each atom,
+     * reordered based on the order described by getAtomIndex().  This array is automatically updated at the start of
+     * each force computation.
+     */
+    OpenCLArray& getPosqReordered() {
+        return (useReordering ? posqReordered : posq);
+    }
+    /**
      * Get the array which contains the velocity (the xyz components) and inverse mass (the w component) of each atom.
      */
     OpenCLArray& getVelm() {
@@ -289,6 +297,13 @@ public:
      */
     OpenCLArray& getLongForceBuffer() {
         return longForceBuffer;
+    }
+    /**
+     * Get the array which contains a contribution to each force represented as 64 bit fixed point, reordered based on
+     * the order described by getAtomIndex().
+     */
+    OpenCLArray& getLongForceBufferReordered() {
+        return (useReordering ? longForceBufferReordered : longForceBuffer);
     }
     /**
      * Get the array which contains the buffer in which energy is computed.
@@ -324,6 +339,12 @@ public:
      */
     OpenCLArray& getAtomIndexArray() {
         return atomIndexDevice;
+    }
+    /**
+     * Get the array which contains the ordering used for computing nonbonded interactions.
+     */
+    OpenCLArray& getNonbondedAtomOrder() {
+        return nonbondedAtomOrder;
     }
     /**
      * Create an OpenCL Program from source code.
@@ -667,18 +688,18 @@ private:
     cl::Kernel reduceForcesKernel;
     cl::Kernel reduceEnergyKernel;
     cl::Kernel setChargesKernel;
+    cl::Kernel reorderAtomsKernel;
     cl::Buffer* pinnedBuffer;
     void* pinnedMemory;
-    OpenCLArray posq;
-    OpenCLArray posqCorrection;
+    OpenCLArray posq, posqCorrection, posqReordered;
     OpenCLArray velm;
     OpenCLArray force;
     OpenCLArray forceBuffers;
-    OpenCLArray longForceBuffer;
+    OpenCLArray longForceBuffer, longForceBufferReordered;
     OpenCLArray energyBuffer;
     OpenCLArray energySum;
     OpenCLArray energyParamDerivBuffer;
-    OpenCLArray atomIndexDevice;
+    OpenCLArray atomIndexDevice, nonbondedAtomOrder;
     OpenCLArray chargeBuffer;
     std::vector<std::string> energyParamDerivNames;
     std::map<std::string, double> energyParamDerivWorkspace;

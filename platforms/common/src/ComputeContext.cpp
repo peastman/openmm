@@ -28,13 +28,13 @@
 #include "openmm/VirtualSite.h"
 #include "openmm/internal/ContextImpl.h"
 #include "openmm/internal/ThreadPool.h"
+#include "CommonKernelSources.h"
 #include "hilbert.h"
 #include <algorithm>
 #include <cmath>
 #include <set>
 #include <sstream>
 #include <unordered_set>
-#include <utility>
 
 using namespace OpenMM;
 using namespace std;
@@ -48,6 +48,32 @@ ComputeContext::ComputeContext(const System& system) : system(system), time(0.0)
 }
 
 ComputeContext::~ComputeContext() {
+}
+
+void ComputeContext::initialize() {
+    ComputeProgram program = compileProgram(CommonKernelSources::utilities);
+    reorderValues4Kernel = program->createKernel("reorderValues4");
+    reorderValues4Kernel->addArg();
+    reorderValues4Kernel->addArg();
+    reorderValues4Kernel->addArg(getNonbondedAtomOrder());
+    reorderValues4Kernel->addArg(numAtoms);
+    reorderValues8Kernel = program->createKernel("reorderValues8");
+    reorderValues8Kernel->addArg();
+    reorderValues8Kernel->addArg();
+    reorderValues8Kernel->addArg(getNonbondedAtomOrder());
+    reorderValues8Kernel->addArg(numAtoms);
+    reorderValues16Kernel = program->createKernel("reorderValues16");
+    reorderValues16Kernel->addArg();
+    reorderValues16Kernel->addArg();
+    reorderValues16Kernel->addArg(getNonbondedAtomOrder());
+    reorderValues16Kernel->addArg(numAtoms);
+    if (getSupportsDoublePrecision()) {
+        reorderValues32Kernel = program->createKernel("reorderValues32");
+        reorderValues32Kernel->addArg();
+        reorderValues32Kernel->addArg();
+        reorderValues32Kernel->addArg(getNonbondedAtomOrder());
+        reorderValues32Kernel->addArg(numAtoms);
+    }
 }
 
 ComputeQueue ComputeContext::getCurrentQueue() {
@@ -516,9 +542,119 @@ void ComputeContext::forceReorder() {
     forceNextReorder = true;
 }
 
+void ComputeContext::reorderArray(ArrayInterface& original, ArrayInterface& reordered) {
+    int size = original.getElementSize();
+    if (size == 4) {
+        reorderValues4Kernel->setArg(0, original);
+        reorderValues4Kernel->setArg(1, reordered);
+        reorderValues4Kernel->execute(numAtoms);
+    }
+    else if (size == 8) {
+        reorderValues8Kernel->setArg(0, original);
+        reorderValues8Kernel->setArg(1, reordered);
+        reorderValues8Kernel->execute(numAtoms);
+    }
+    else if (size == 16) {
+        reorderValues16Kernel->setArg(0, original);
+        reorderValues16Kernel->setArg(1, reordered);
+        reorderValues16Kernel->execute(numAtoms);
+    }
+    else if (size == 32) {
+        reorderValues32Kernel->setArg(0, original);
+        reorderValues32Kernel->setArg(1, reordered);
+        reorderValues32Kernel->execute(numAtoms);
+    }
+    else
+        throw OpenMMException("Unsupported element size for reordered array");
+}
+
+void ComputeContext::addReorderedArray(ArrayInterface& original, ArrayInterface& reordered) {
+    reorderedArrays.push_back(make_pair(&original, &reordered));
+}
+
+void ComputeContext::updateNonbondedAtomOrder() {
+    atomsWereReordered = false;
+    if (!useReordering)
+        return;
+    if (stepsSinceReorder >= 250 || forceNextReorder) {
+        atomsWereReordered = true;
+        stepsSinceReorder = 0;
+        vector<mm_double4> pos;
+        getPosq().download(pos, true);
+        double minx, miny, minz, maxx, maxy, maxz;
+        if (getNonbondedUtilities().getUsePeriodic()) {
+            Vec3 periodicBoxX, periodicBoxY, periodicBoxZ;
+            getPeriodicBoxVectors(periodicBoxX, periodicBoxY, periodicBoxZ);
+            Vec3 invPeriodicBoxSize(1.0/periodicBoxX[0], 1.0/periodicBoxY[1], 1.0/periodicBoxZ[2]);
+            minx = miny = minz = 0.0;
+            maxx = periodicBoxX[0];
+            maxy = periodicBoxY[1];
+            maxz = periodicBoxZ[2];
+
+            // Move each position into the same box.
+
+            for (int i = 0; i < numAtoms; i++) {
+                mm_double4& p = pos[i];
+                int zcell = (int) floor(p.z*invPeriodicBoxSize[2]);
+                p.x -= zcell*periodicBoxZ[0];
+                p.y -= zcell*periodicBoxZ[1];
+                p.z -= zcell*periodicBoxZ[2];
+                int ycell = (int) floor(p.y*invPeriodicBoxSize[1]);
+                p.x -= ycell*periodicBoxY[0];
+                p.y -= ycell*periodicBoxY[1];
+                int xcell = (int) floor(p.x*invPeriodicBoxSize[0]);
+                p.x -= xcell*periodicBoxX[0];
+            }
+        }
+        else {
+            minx = pos[0].x;
+            miny = pos[0].y;
+            minz = pos[0].z;
+            maxx = pos[0].x;
+            maxy = pos[0].y;
+            maxz = pos[0].z;
+            for (int i = 1; i < numAtoms; i++) {
+                const mm_double4& p = pos[i];
+                minx = min(minx, p.x);
+                maxx = max(maxx, p.x);
+                miny = min(miny, p.y);
+                maxy = max(maxy, p.y);
+                minz = min(minz, p.z);
+                maxz = max(maxz, p.z);
+            }
+        }
+        double binWidth = max(max(maxx-minx, maxy-miny), maxz-minz)/255.0;
+        double invBinWidth = 1.0/binWidth;
+        bitmask_t coords[3];
+        vector<pair<int, int> > atomBins(numAtoms);
+        for (int i = 0; i < numAtoms; i++) {
+            mm_double4& p = pos[i];
+            coords[0] = (bitmask_t) ((p.x-minx)*invBinWidth);
+            coords[1] = (bitmask_t) ((p.y-miny)*invBinWidth);
+            coords[2] = (bitmask_t) ((p.z-minz)*invBinWidth);
+            int bin = (int) hilbert_c2i(3, 8, coords);
+            atomBins[i] = pair<int, int>(bin, i);
+        }
+        sort(atomBins.begin(), atomBins.end());
+
+        // Reorder the atoms.
+
+        vector<int> atomOrder(numAtoms);
+        for (int i = 0; i < numAtoms; i++)
+            atomOrder[i] = atomBins[i].second;
+        getNonbondedAtomOrder().upload(atomOrder);
+        for (auto arrays : reorderedArrays)
+            reorderArray(*arrays.first, *arrays.second);
+    }
+    else
+        stepsSinceReorder++;
+    reorderArray(getPosq(), getPosqReordered());
+}
+
 void ComputeContext::reorderAtoms() {
     atomsWereReordered = false;
-    if (numAtoms == 0 || !getNonbondedUtilities().getUseCutoff() || (stepsSinceReorder < 250 && !forceNextReorder)) {
+    return;
+    if (!useReordering || (stepsSinceReorder < 250 && !forceNextReorder)) {
         stepsSinceReorder++;
         return;
     }

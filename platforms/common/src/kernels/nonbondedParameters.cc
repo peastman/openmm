@@ -4,7 +4,7 @@
 KERNEL void computeParameters(GLOBAL mixed* RESTRICT energyBuffer, int includeSelfEnergy, GLOBAL real* RESTRICT globalParams,
         int numAtoms, GLOBAL const float4* RESTRICT baseParticleParams, GLOBAL real4* RESTRICT posq, GLOBAL real* RESTRICT charge,
         GLOBAL float2* RESTRICT sigmaEpsilon, GLOBAL float4* RESTRICT particleParamOffsets, GLOBAL int* RESTRICT particleOffsetIndices,
-        GLOBAL real* RESTRICT chargeBuffer
+        GLOBAL real* RESTRICT chargeBuffer, GLOBAL int* RESTRICT atomOrder
 #ifdef HAS_EXCEPTIONS
         , int numExceptions, GLOBAL const float4* RESTRICT baseExceptionParams, GLOBAL float4* RESTRICT exceptionParams,
         GLOBAL float4* RESTRICT exceptionParamOffsets, GLOBAL int* RESTRICT exceptionOffsetIndices
@@ -16,9 +16,10 @@ KERNEL void computeParameters(GLOBAL mixed* RESTRICT energyBuffer, int includeSe
     // Compute particle parameters.
     
     for (int i = GLOBAL_ID; i < numAtoms; i += GLOBAL_SIZE) {
-        float4 params = baseParticleParams[i];
+        int index = atomOrder[i];
+        float4 params = baseParticleParams[index];
 #ifdef HAS_PARTICLE_OFFSETS
-        int start = particleOffsetIndices[i], end = particleOffsetIndices[i+1];
+        int start = particleOffsetIndices[index], end = particleOffsetIndices[index+1];
         for (int j = start; j < end; j++) {
             float4 offset = particleParamOffsets[j];
             real value = globalParams[(int) offset.w];

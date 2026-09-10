@@ -48,6 +48,7 @@
 #include <queue>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace OpenMM {
@@ -73,6 +74,10 @@ public:
     static const int TileSize;
     ComputeContext(const System& system);
     virtual ~ComputeContext();
+    /**
+     * Subclasses should invoke this at the end of their own initialize() method.
+     */
+    virtual void initialize();
     /**
      * Add a ComputeForceInfo to this context.  Force kernels call this during initialization
      * to provide information about particular forces.
@@ -270,6 +275,32 @@ public:
         computeForceCount = count;
     }
     /**
+     * Copy per-atom values from one array to another, reordering them based on the order described by
+     * getNonbondedAtomOrder().
+     *
+     * @param original    an array containing the values in standard atom order
+     * @param reordered   an array to which the values should be copied in nonbonded order.
+     */
+    void reorderArray(ArrayInterface& original, ArrayInterface& reordered);
+    /**
+     * Add an array that should be automatically reordered whenever the nonbonded atom order changes.
+     *
+     * @param original    an array containing the values in standard atom order
+     * @param reordered   an array to which the values should be copied in nonbonded order.
+     */
+    void addReorderedArray(ArrayInterface& original, ArrayInterface& reordered);
+    /**
+     * Possibly update the order used internally for computing nonbonded interactions, then copy the current positions
+     * over to the reordered array.  The order is chosen to keep spatially contiguous atoms close together in the array.
+     */
+    void updateNonbondedAtomOrder();
+    /**
+     * Get whether this context is reordering particles for nonbonded interactions.
+     */
+    bool getUseReordering() const {
+        return useReordering;
+    }
+    /**
      * Get the number of time steps since the atoms were reordered.
      */
     int getStepsSinceReorder() const {
@@ -282,7 +313,7 @@ public:
         stepsSinceReorder = steps;
     }
     /**
-     * Get whether atoms were reordered during the most recent force/energy computation.
+     * Get whether atoms were reordered during the most recent call to updateNonbondedAtomOrder().
      */
     bool getAtomsWereReordered() const {
         return atomsWereReordered;
@@ -387,6 +418,12 @@ public:
      */
     virtual ArrayInterface& getPosqCorrection() = 0;
     /**
+     * Get the array which contains the position (the xyz components) and charge (the w component) of each atom,
+     * reordered based on the order described by getNonbondedAtomOrder().  This array is automatically updated at the
+     * start of each force computation.
+     */
+    virtual ArrayInterface& getPosqReordered() = 0;
+    /**
      * Get the array which contains the velocity (the xyz components) and inverse mass (the w component) of each atom.
      */
     virtual ArrayInterface& getVelm() = 0;
@@ -404,6 +441,11 @@ public:
      * Get the array which contains a contribution to each force represented as 64 bit fixed point.
      */
     virtual ArrayInterface& getLongForceBuffer() = 0;
+    /**
+     * Get the array which contains a contribution to each force represented as 64 bit fixed point, reordered based on
+     * the order described by getNonbondedAtomOrder().
+     */
+    virtual ArrayInterface& getLongForceBufferReordered() = 0;
     /**
      * Get the array which contains the buffer in which energy is computed.
      */
@@ -443,6 +485,10 @@ public:
      * Get the array which contains the index of each atom.
      */
     virtual ArrayInterface& getAtomIndexArray() = 0;
+    /**
+     * Get the array which contains the ordering used for computing nonbonded interactions.
+     */
+    virtual ArrayInterface& getNonbondedAtomOrder() = 0;
     /**
      * Get the number of cells by which the positions are offset.
      */
@@ -626,8 +672,9 @@ protected:
     double time;
     int numAtoms, paddedNumAtoms, computeForceCount, stepsSinceReorder;
     long long stepCount;
-    bool forceNextReorder, atomsWereReordered, forcesValid, hasInitializedGlobals;
+    bool useReordering, forceNextReorder, atomsWereReordered, forcesValid, hasInitializedGlobals;
     ComputeQueue defaultQueue, currentQueue;
+    ComputeKernel reorderValues4Kernel, reorderValues8Kernel, reorderValues16Kernel, reorderValues32Kernel;
     std::vector<ComputeForceInfo*> forces;
     std::vector<Molecule> molecules;
     std::vector<MoleculeGroup> moleculeGroups;
@@ -638,6 +685,7 @@ protected:
     std::vector<ForcePostComputation*> postComputations;
     std::vector<std::string> globalParamNames;
     std::vector<double> lastGlobalParamValues;
+    std::vector<std::pair<ArrayInterface*, ArrayInterface*> > reorderedArrays;
     ComputeArray globalParamValues;
     WorkThread* workThread;
 };

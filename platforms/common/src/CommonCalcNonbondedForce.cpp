@@ -285,6 +285,13 @@ void CommonCalcNonbondedForceKernel::commonInitialize(const System& system, cons
     bool usePeriodic = (nonbondedMethod != NoCutoff && nonbondedMethod != CutoffNonPeriodic);
     doLJPME = (nonbondedMethod == LJPME && hasLJ);
     usePosqCharges = hasCoulomb ? cc.requestPosqCharges() : false;
+    if (usePosqCharges) {
+        vector<mm_double4> posq;
+        cc.getPosq().download(posq, true);
+        for (int i = 0; i < baseParticleParamVec.size(); i++)
+            posq[i].w = (double) baseParticleParamVec[i].x;
+        cc.getPosq().upload(posq, true);
+    }
     map<string, string> defines;
     defines["HAS_COULOMB"] = (hasCoulomb ? "1" : "0");
     defines["HAS_LENNARD_JONES"] = (hasLJ ? "1" : "0");
@@ -725,12 +732,13 @@ double CommonCalcNonbondedForceKernel::execute(ContextImpl& context, bool includ
         computeParamsKernel->addArg(cc.getGlobalParamValues());
         computeParamsKernel->addArg(cc.getPaddedNumAtoms());
         computeParamsKernel->addArg(baseParticleParams);
-        computeParamsKernel->addArg(cc.getPosq());
+        computeParamsKernel->addArg(cc.getPosqReordered());
         computeParamsKernel->addArg(charges);
         computeParamsKernel->addArg(sigmaEpsilon);
         computeParamsKernel->addArg(particleParamOffsets);
         computeParamsKernel->addArg(particleOffsetIndices);
         computeParamsKernel->addArg(chargeBuffer);
+        computeParamsKernel->addArg(cc.getNonbondedAtomOrder());
         if (exceptionParams.isInitialized()) {
             computeParamsKernel->addArg((int) exceptionParams.getSize());
             computeParamsKernel->addArg(baseExceptionParams);
@@ -882,6 +890,8 @@ double CommonCalcNonbondedForceKernel::execute(ContextImpl& context, bool includ
 
     // Update particle and exception parameters.
 
+    if (cc.getAtomsWereReordered())
+        recomputeParams = true;
     for (auto param : paramValues) {
         double value = context.getParameter(param.first);
         if (value != param.second) {

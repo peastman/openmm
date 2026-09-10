@@ -88,11 +88,16 @@ __kernel void reduceReal4Buffer(__global real4* restrict buffer, __global long* 
 /**
  * Sum the various buffers containing forces.
  */
-__kernel void reduceForces(__global long* restrict longBuffer, __global real4* restrict buffer, int bufferSize, int numBuffers) {
+__kernel void reduceForces(__global long* restrict longBuffer, __global long* restrict longBufferReordered,
+        __global int* restrict atomOrder, __global real4* restrict buffer, int bufferSize, int numBuffers, int useReordering) {
     int totalSize = bufferSize*numBuffers;
     real scale = 1/(real) 0x100000000;
     for (int index = get_global_id(0); index < bufferSize; index += get_global_size(0)) {
         real4 sum = (real4) (scale*longBuffer[index], scale*longBuffer[index+bufferSize], scale*longBuffer[index+2*bufferSize], 0);
+        if (useReordering) {
+            int i = atomOrder[index];
+            sum += (real4) (scale*longBufferReordered[i], scale*longBufferReordered[i+bufferSize], scale*longBufferReordered[i+2*bufferSize], 0);
+        }
         for (int i = index; i < totalSize; i += bufferSize)
             sum += buffer[i];
         buffer[index] = sum;
@@ -134,7 +139,7 @@ __kernel void determineNativeAccuracy(__global float8* restrict values, int numV
 /**
  * Record the atomic charges into the posq array.
  */
-__kernel void setCharges(__global real* restrict charges, __global real4* restrict posq, __global int* restrict atomOrder, int numAtoms) {
+__kernel void setCharges(__global real* restrict charges, __global real4* restrict posq, int numAtoms) {
     for (int i = get_global_id(0); i < numAtoms; i += get_global_size(0))
-        posq[i].w = charges[atomOrder[i]];
+        posq[i].w = charges[i];
 }
